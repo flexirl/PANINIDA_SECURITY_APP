@@ -1,0 +1,562 @@
+# Software Requirements Specification (SRS)
+# Pan India Security — Workforce Management System
+
+**Prepared For:** Pan India Securities Pvt Ltd  
+**Website:** https://panindiasecurity.com  
+**Version:** 1.0 | **Date:** 20 May 2026  
+
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+This SRS defines the complete functional and non-functional requirements for the **Pan India Security Workforce Management System** — a mobile-first platform to digitize and streamline security operations including guard management, GPS-based attendance, payroll, recruitment, and field inspections.
+
+### 1.2 Intended Audience
+Business Owners, Project Managers, Developers, UI/UX Designers, Backend Engineers, QA Engineers, Operations Team.
+
+### 1.3 Key Definitions
+
+| Term | Definition |
+|------|-----------|
+| **Guard** | Security personnel deployed at client sites |
+| **Site** | Client location where guards are posted |
+| **Admin** | Single administrator with full system access |
+| **Manager** | Field inspector responsible for site monitoring |
+| **Recruiter** | Telecaller responsible for hiring candidates |
+| **GeoFence** | GPS radius validation for attendance |
+| **Payroll** | Salary calculation including deductions |
+
+---
+
+## 2. System Purpose & Objectives
+
+### 2.1 Business Objectives
+- Replace manual paper/Excel-based processes with a centralized digital platform
+- Track guard attendance with GPS + selfie verification (prevent proxy attendance)
+- Automate payroll with deductions (uniform, penalties, advances)
+- Maintain centralized guard & recruitment databases
+- Enable real-time site inspection reporting
+- Improve operational transparency and reduce disputes
+
+### 2.2 Technical Objectives
+- Build a scalable React Native mobile app with role-based access
+- Secure authentication via OTP + JWT
+- Cloud-native backend with Supabase PostgreSQL
+- Modular, maintainable architecture
+
+---
+
+## 3. Project Scope
+
+### 3.1 In Scope
+- Mobile workforce management (Android + iOS)
+- **Single unified Admin** role (no super admin / ops admin split)
+- Role-based authentication (4 roles)
+- GPS + Selfie attendance system
+- Site assignment & management
+- Payroll with deductions
+- Uniform tracking
+- Recruitment pipeline management
+- Field inspection & reporting
+- Push notifications
+- Document uploads
+- Reporting dashboard
+
+### 3.2 Out of Scope (Phase 1)
+- Biometric hardware integration
+- AI facial recognition
+- Multi-language support
+- Live GPS tracking (continuous)
+- Advanced analytics / BI dashboard
+- Client billing automation
+- WhatsApp integration
+
+---
+
+## 4. User Roles & Permissions
+
+> [!IMPORTANT]
+> The system uses a **single Admin role** (unified) instead of separate Super Admin and Operations Admin.
+
+### 4.1 Admin (Unified)
+
+| Area | Permissions |
+|------|------------|
+| Users | Add, edit, deactivate all users |
+| Guards | Full CRUD, assign to sites, manage documents |
+| Sites | Full CRUD, configure geo-fence, assign guards |
+| Attendance | View all, edit/correct, generate reports |
+| Payroll | Generate, approve, view all salary slips |
+| Recruitment | Full access to candidate pipeline |
+| Inspections | View all reports, assign inspections |
+| Settings | App configuration, shift timings, geo-fence radius |
+| Reports | Generate and export all reports |
+
+### 4.2 Manager / Inspector
+
+| Area | Permissions |
+|------|------------|
+| Sites | View assigned sites only |
+| Inspections | Create reports, upload photos, submit remarks |
+| Guards | Verify presence at assigned sites |
+| Incidents | Report and document incidents |
+| **Restrictions** | No payroll, no recruitment, no user management |
+
+### 4.3 Recruiter / Telecaller
+
+| Area | Permissions |
+|------|------------|
+| Candidates | Full CRUD on candidate records |
+| Pipeline | Filter, contact, update candidate status |
+| **Restrictions** | No payroll, no attendance, no site management |
+
+### 4.4 Security Guard
+
+| Area | Permissions |
+|------|------------|
+| Attendance | Mark check-in / check-out (own only) |
+| Profile | View own profile, documents |
+| Salary | View own salary slips |
+| Shifts | View assigned shift details |
+| Reports | Upload incident reports |
+
+---
+
+## 5. Functional Requirements
+
+### 5.1 Authentication Module (FR-AUTH)
+
+| ID | Requirement |
+|----|------------|
+| FR-AUTH-01 | Mobile OTP login via Firebase Authentication |
+| FR-AUTH-02 | JWT-based session with refresh tokens |
+| FR-AUTH-03 | Role-based routing after login |
+| FR-AUTH-04 | Auto-logout on token expiry |
+| FR-AUTH-05 | Device-based login validation (optional) |
+
+**Inputs:** Mobile number, OTP  
+**Outputs:** JWT token, user session, role-based navigation
+
+### 5.2 Guard Management (FR-GUARD)
+
+| ID | Requirement |
+|----|------------|
+| FR-GUARD-01 | Add new guard with full profile |
+| FR-GUARD-02 | Edit guard details |
+| FR-GUARD-03 | Upload documents (Aadhaar, PAN, photo, police verification) |
+| FR-GUARD-04 | Assign guard to site with shift type |
+| FR-GUARD-05 | Track employment status (Active / Inactive / Terminated) |
+| FR-GUARD-06 | View guard history (sites, attendance, salary) |
+
+**Guard Profile Fields:**
+Name, Phone, Aadhaar Number, PAN, Address, Photo, Height, Weight, Education, Police Verification Status, Base Salary, Uniform Status, Joining Date, Shift Type (Day/Night/Rotational), Emergency Contact, Bank Details
+
+### 5.3 Site Management (FR-SITE)
+
+| ID | Requirement |
+|----|------------|
+| FR-SITE-01 | Add client site with GPS coordinates |
+| FR-SITE-02 | Configure geo-fence radius (default 100m, configurable) |
+| FR-SITE-03 | Configure shift timings per site |
+| FR-SITE-04 | Assign guards (day shift + night shift) |
+| FR-SITE-05 | Track active guard count per site |
+| FR-SITE-06 | Site status (Active / Inactive) |
+
+**Site Fields:**
+Site Name, Client Name, Address, Latitude, Longitude, Geo-fence Radius, Day Shift Timing, Night Shift Timing, Day Guards Count, Night Guards Count, Contact Person, Contact Phone
+
+### 5.4 Attendance System (FR-ATT)
+
+| ID | Requirement |
+|----|------------|
+| FR-ATT-01 | GPS validation — guard must be within geo-fence |
+| FR-ATT-02 | Selfie capture at check-in and check-out |
+| FR-ATT-03 | Shift timing validation (±30 min tolerance) |
+| FR-ATT-04 | Prevent duplicate check-in for same shift |
+| FR-ATT-05 | Attendance history with filters (date, guard, site) |
+| FR-ATT-06 | Admin can manually correct attendance |
+| FR-ATT-07 | Late arrival / early departure flagging |
+
+**Attendance Flow:**
+```
+Guard opens app → Attendance screen → GPS check → Within geo-fence?
+  → YES → Capture selfie → Validate shift timing → Submit → Store in DB → Notify Admin
+  → NO → Show error "You are not at your assigned site"
+```
+
+### 5.5 Payroll Management (FR-PAY)
+
+| ID | Requirement |
+|----|------------|
+| FR-PAY-01 | Auto-calculate salary based on attendance |
+| FR-PAY-02 | Apply overtime (hours beyond shift) |
+| FR-PAY-03 | Apply penalty deductions (absences, late) |
+| FR-PAY-04 | Apply uniform deductions |
+| FR-PAY-05 | Apply advance salary deductions |
+| FR-PAY-06 | Generate monthly salary slips |
+| FR-PAY-07 | Guard can view own salary slips |
+
+**Salary Formula:**
+```
+Final Salary = (Base Salary / Total Working Days) × Days Present
+             + Overtime Amount
+             - Penalty Deductions
+             - Uniform Dues
+             - Advance Deductions
+```
+
+### 5.6 Uniform Management (FR-UNI)
+
+| ID | Requirement |
+|----|------------|
+| FR-UNI-01 | Track uniform items issued to each guard |
+| FR-UNI-02 | Track payment status per item |
+| FR-UNI-03 | Auto-deduct from salary if configured |
+
+**Items:** Uniform Set, Shoes, Belt, Cap, ID Card, Torch, Baton, Whistle
+
+### 5.7 Recruitment Management (FR-REC)
+
+| ID | Requirement |
+|----|------------|
+| FR-REC-01 | Register new candidate |
+| FR-REC-02 | Filter candidates by location, experience, availability |
+| FR-REC-03 | Update candidate status through pipeline |
+| FR-REC-04 | Convert selected candidate to guard record |
+| FR-REC-05 | Track recruiter activity |
+
+**Candidate Pipeline Statuses:**
+`New → Contacted → Interested → Interview Scheduled → Selected → Hired → Rejected`
+
+**Candidate Fields:**
+Name, Phone, Height, Weight, Education, Experience (years), Preferred Location, Salary Expectation, Availability Date, Current Status, Recruiter Notes
+
+### 5.8 Inspection Management (FR-INSP)
+
+| ID | Requirement |
+|----|------------|
+| FR-INSP-01 | Manager visits assigned site |
+| FR-INSP-02 | Verify guard presence (checklist) |
+| FR-INSP-03 | Upload site photos (min 2, max 10) |
+| FR-INSP-04 | Submit remarks and observations |
+| FR-INSP-05 | Report incidents with severity level |
+| FR-INSP-06 | GPS-stamped inspection records |
+
+### 5.9 Notification System (FR-NOTIF)
+
+| ID | Requirement |
+|----|------------|
+| FR-NOTIF-01 | Push notifications via Firebase FCM |
+| FR-NOTIF-02 | In-app notification center |
+| FR-NOTIF-03 | Shift reminders (30 min before) |
+| FR-NOTIF-04 | Missed attendance alerts to admin |
+| FR-NOTIF-05 | Salary generation alerts |
+| FR-NOTIF-06 | Inspection schedule reminders |
+
+### 5.10 Reporting Module (FR-RPT)
+
+| ID | Requirement |
+|----|------------|
+| FR-RPT-01 | Daily attendance summary |
+| FR-RPT-02 | Monthly attendance report per guard/site |
+| FR-RPT-03 | Payroll summary report |
+| FR-RPT-04 | Recruitment pipeline report |
+| FR-RPT-05 | Inspection history report |
+| FR-RPT-06 | Export reports as PDF |
+
+---
+
+## 6. Non-Functional Requirements
+
+| Category | Requirement |
+|----------|-----------|
+| **Performance** | API response < 3s, Attendance submission < 5s |
+| **Capacity** | Support 1000+ concurrent users |
+| **Security** | HTTPS, JWT tokens, bcrypt hashing, RLS on Supabase |
+| **Uptime** | 99% availability target |
+| **Backup** | Daily automated database backups |
+| **Scalability** | Cloud-native, horizontally scalable |
+| **Compatibility** | Android 8+ and iOS 14+ |
+
+---
+
+## 7. Database Schema
+
+### 7.1 Core Tables
+
+```sql
+-- Users (all roles)
+users (
+  id UUID PRIMARY KEY,
+  name VARCHAR NOT NULL,
+  phone VARCHAR UNIQUE NOT NULL,
+  role ENUM('admin','manager','recruiter','guard') NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  fcm_token TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Guard Profiles (extends users)
+guards (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES users(id),
+  aadhaar_number VARCHAR,
+  pan_number VARCHAR,
+  address TEXT,
+  photo_url TEXT,
+  height DECIMAL,
+  weight DECIMAL,
+  education VARCHAR,
+  police_verification BOOLEAN DEFAULT false,
+  base_salary DECIMAL NOT NULL,
+  joining_date DATE,
+  shift_type VARCHAR, -- 'day' | 'night' | 'rotational'
+  emergency_contact VARCHAR,
+  bank_account VARCHAR,
+  bank_ifsc VARCHAR,
+  employment_status VARCHAR DEFAULT 'active', -- active | inactive | terminated
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Sites
+sites (
+  id UUID PRIMARY KEY,
+  site_name VARCHAR NOT NULL,
+  client_name VARCHAR,
+  address TEXT,
+  latitude DECIMAL NOT NULL,
+  longitude DECIMAL NOT NULL,
+  geofence_radius INT DEFAULT 100, -- meters
+  day_shift_start TIME,
+  day_shift_end TIME,
+  night_shift_start TIME,
+  night_shift_end TIME,
+  contact_person VARCHAR,
+  contact_phone VARCHAR,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Guard-Site Assignments
+guard_site_assignments (
+  id UUID PRIMARY KEY,
+  guard_id UUID REFERENCES guards(id),
+  site_id UUID REFERENCES sites(id),
+  shift_type VARCHAR NOT NULL, -- 'day' | 'night'
+  assigned_date DATE,
+  is_active BOOLEAN DEFAULT true
+)
+
+-- Attendance
+attendance (
+  id UUID PRIMARY KEY,
+  guard_id UUID REFERENCES guards(id),
+  site_id UUID REFERENCES sites(id),
+  check_in_time TIMESTAMP,
+  check_out_time TIMESTAMP,
+  check_in_selfie TEXT,
+  check_out_selfie TEXT,
+  check_in_lat DECIMAL,
+  check_in_lng DECIMAL,
+  check_out_lat DECIMAL,
+  check_out_lng DECIMAL,
+  status VARCHAR DEFAULT 'present', -- present | late | half_day | absent
+  is_manual_entry BOOLEAN DEFAULT false,
+  remarks TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Payroll
+payroll (
+  id UUID PRIMARY KEY,
+  guard_id UUID REFERENCES guards(id),
+  month VARCHAR NOT NULL, -- '2026-05'
+  total_days INT,
+  days_present INT,
+  base_salary DECIMAL,
+  overtime_amount DECIMAL DEFAULT 0,
+  penalty_amount DECIMAL DEFAULT 0,
+  uniform_deduction DECIMAL DEFAULT 0,
+  advance_deduction DECIMAL DEFAULT 0,
+  final_salary DECIMAL,
+  status VARCHAR DEFAULT 'draft', -- draft | generated | approved
+  generated_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Uniform Tracking
+uniforms (
+  id UUID PRIMARY KEY,
+  guard_id UUID REFERENCES guards(id),
+  item_name VARCHAR NOT NULL,
+  item_cost DECIMAL,
+  issued_date DATE,
+  payment_status VARCHAR DEFAULT 'pending', -- pending | partial | paid | deducted
+  amount_paid DECIMAL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Candidates (Recruitment)
+candidates (
+  id UUID PRIMARY KEY,
+  name VARCHAR NOT NULL,
+  phone VARCHAR NOT NULL,
+  height DECIMAL,
+  weight DECIMAL,
+  education VARCHAR,
+  experience_years INT,
+  preferred_location VARCHAR,
+  salary_expectation DECIMAL,
+  availability_date DATE,
+  status VARCHAR DEFAULT 'new',
+  recruiter_id UUID REFERENCES users(id),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Inspections
+inspections (
+  id UUID PRIMARY KEY,
+  site_id UUID REFERENCES sites(id),
+  inspector_id UUID REFERENCES users(id),
+  inspection_date TIMESTAMP DEFAULT NOW(),
+  guards_present TEXT[], -- array of guard IDs verified
+  guards_absent TEXT[],
+  photos TEXT[], -- array of photo URLs
+  remarks TEXT,
+  incident_reported BOOLEAN DEFAULT false,
+  incident_severity VARCHAR, -- low | medium | high | critical
+  incident_description TEXT,
+  latitude DECIMAL,
+  longitude DECIMAL,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+-- Notifications
+notifications (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES users(id),
+  title VARCHAR NOT NULL,
+  body TEXT,
+  type VARCHAR, -- shift_reminder | attendance | salary | inspection
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+```
+
+---
+
+## 8. API Architecture
+
+### 8.1 Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/send-otp` | Send OTP to mobile |
+| POST | `/auth/verify-otp` | Verify OTP, return JWT |
+| POST | `/auth/refresh` | Refresh token |
+| POST | `/auth/logout` | Invalidate session |
+
+### 8.2 Guards
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/guards` | List all guards (Admin) |
+| POST | `/guards` | Add new guard |
+| GET | `/guards/:id` | Guard details |
+| PUT | `/guards/:id` | Update guard |
+| POST | `/guards/:id/documents` | Upload documents |
+| POST | `/guards/:id/assign-site` | Assign to site |
+
+### 8.3 Sites
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sites` | List all sites |
+| POST | `/sites` | Create site |
+| GET | `/sites/:id` | Site details with assigned guards |
+| PUT | `/sites/:id` | Update site |
+
+### 8.4 Attendance
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/attendance/check-in` | Submit check-in |
+| POST | `/attendance/check-out` | Submit check-out |
+| GET | `/attendance/history` | Filtered history |
+| GET | `/attendance/daily-summary` | Today's summary |
+| PUT | `/attendance/:id` | Manual correction (Admin) |
+
+### 8.5 Payroll
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/payroll/generate` | Generate monthly payroll |
+| GET | `/payroll/slips` | List salary slips |
+| GET | `/payroll/slips/:id` | Slip details |
+| PUT | `/payroll/slips/:id/approve` | Approve payroll |
+
+### 8.6 Recruitment
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/candidates` | Add candidate |
+| GET | `/candidates` | Filter candidates |
+| PUT | `/candidates/:id` | Update candidate |
+| POST | `/candidates/:id/convert` | Convert to guard |
+
+### 8.7 Inspections
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/inspections` | Submit inspection |
+| GET | `/inspections` | List inspections |
+| GET | `/inspections/:id` | Inspection details |
+
+---
+
+## 9. Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Mobile App | React Native (Expo) |
+| Language | TypeScript |
+| Backend/DB | Supabase (PostgreSQL + Edge Functions) |
+| Auth | Firebase OTP + Supabase JWT |
+| Storage | Supabase Storage (selfies, documents, photos) |
+| Notifications | Firebase Cloud Messaging (FCM) |
+| State Management | Zustand |
+| API Client | Supabase JS Client + Axios |
+| Maps/GPS | React Native Maps + Geolocation API |
+| Camera | Expo Camera |
+| Navigation | React Navigation v6 |
+| Forms | React Hook Form + Zod validation |
+
+---
+
+## 10. UI/UX Requirements
+
+### Color Theme
+| Usage | Color |
+|-------|-------|
+| Primary | Navy Blue `#1B2A4A` |
+| Secondary | Dark Gray `#2D3748` |
+| Accent | Gold `#D4A843` |
+| Background | White `#FFFFFF` / Light Gray `#F7F8FA` |
+| Success | Green `#38A169` |
+| Danger | Red `#E53E3E` |
+| Text | Dark `#1A202C` / Muted `#718096` |
+
+### Design Principles
+- Mobile-first, clean interface
+- Role-based dashboards (each role sees only relevant modules)
+- Bottom tab navigation for primary actions
+- Card-based layouts for data display
+- Minimal learning curve — designed for field workers
+
+---
+
+## 11. Deployment
+
+| Component | Platform |
+|-----------|----------|
+| Mobile Build | Expo EAS Build (Android APK/AAB + iOS IPA) |
+| Database | Supabase Cloud (PostgreSQL) |
+| File Storage | Supabase Storage |
+| Push Notifications | Firebase FCM |
+| CI/CD | GitHub Actions + EAS Build |
+| Monitoring | Sentry for crash reporting |

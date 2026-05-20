@@ -1,0 +1,306 @@
+# Pan India Security — 3-Week Development Plan
+
+## Current Status Assessment
+
+### ✅ What's DONE
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Database Schema | ✅ Done | 11 tables created, deployed to Supabase Cloud |
+| Indexes | ✅ Done | All performance indexes applied |
+| RLS Policies | ✅ Done | Role-based row-level security on all tables |
+| DB Functions & Triggers | ✅ Done | Haversine, geofence, attendance validation, auto-deactivation |
+| Storage Buckets | ✅ Done | guard-documents, selfies, inspection-photos |
+| Edge Function: `guards` | ✅ Done | Full CRUD + document upload |
+| Edge Function: `sites` | ✅ Done | Full CRUD |
+| Edge Function: `assignments` | ✅ Done | Assign/unassign guards to sites |
+| Edge Function: `attendance` | ✅ Done | Check-in/out with geofence validation (just created) |
+| Edge Function: `auth-verify-otp` | ✅ Done | OTP verification |
+| Edge Function: `auth-refresh` | ✅ Done | Token refresh |
+| Edge Function: `manage-users` | ✅ Done | User CRUD |
+| Shared Modules | ✅ Done | auth-middleware, supabase-client, geo-utils, validators |
+| Auth Bypass (Postman) | ✅ Done | Service role key bypass for testing |
+
+### ❌ What's REMAINING
+
+#### Backend (Edge Functions)
+| Component | Priority | Complexity |
+|-----------|----------|------------|
+| **Payroll** Edge Function | 🔴 High | Complex — salary calculation, deductions |
+| **Recruitment/Candidates** Edge Function | 🟡 Medium | Simple CRUD + pipeline status |
+| **Inspections** Edge Function | 🟡 Medium | CRUD + photo upload + GPS |
+| **Uniforms** Edge Function | 🟡 Medium | CRUD + salary deduction integration |
+| **Notifications** Edge Function | 🟡 Medium | CRUD + FCM push (later) |
+| **Dashboard/Reports** Edge Function | 🟡 Medium | Aggregate queries, summaries |
+| Seed Data (test data) | 🟢 Low | SQL insert script |
+| Full Postman Collection | 🟢 Low | Export tested collection |
+| Migration CLI fix | 🟢 Low | Mark existing migrations as applied |
+
+#### Frontend (React Native / Expo)
+| Component | Priority |
+|-----------|----------|
+| Project setup (Expo + TypeScript) | 🔴 High |
+| Auth screens (OTP login) | 🔴 High |
+| Role-based navigation | 🔴 High |
+| Admin Dashboard | 🔴 High |
+| Guard attendance screen (GPS + selfie) | 🔴 High |
+| Guard management screens | 🟡 Medium |
+| Site management screens | 🟡 Medium |
+| Payroll/salary slip screens | 🟡 Medium |
+| Recruitment screens | 🟡 Medium |
+| Inspection screens | 🟡 Medium |
+| Notification center | 🟢 Low |
+| Settings & profile | 🟢 Low |
+
+---
+
+## 3-Week Plan
+
+---
+
+### 📅 WEEK 1: Complete All Backend APIs (May 20–25)
+
+> **Goal:** Finish ALL remaining Edge Functions, test every API via Postman, have a fully working backend.
+
+#### Day 1 (Tue May 20) — Fix Current Issues + Payroll API
+- [x] Fix auth middleware (service_role bypass)
+- [x] Deploy attendance Edge Function with geofencing
+- [ ] Run `006_attendance_fix.sql` in Supabase SQL Editor
+- [ ] Test attendance geofencing in Postman (inside/outside fence)
+- [ ] Build **Payroll Edge Function** (`/functions/v1/payroll`)
+  - `POST /payroll` → Generate monthly payroll for all guards
+  - `GET /payroll` → List payroll records (filter by month, guard, status)
+  - `GET /payroll?id=X` → Salary slip detail
+  - `PUT /payroll?id=X&action=approve` → Approve payroll
+  - Salary formula: `(base/total_days × present) + overtime - penalties - uniform - advances`
+
+#### Day 2 (Wed May 21) — Recruitment + Uniforms APIs
+- [ ] Build **Candidates Edge Function** (`/functions/v1/candidates`)
+  - `POST` → Add candidate
+  - `GET` → List/filter candidates (status, location, recruiter)
+  - `PUT ?id=X` → Update candidate status
+  - `POST ?id=X&action=convert` → Convert candidate → guard record
+- [ ] Build **Uniforms Edge Function** (`/functions/v1/uniforms`)
+  - `POST` → Issue uniform item to guard
+  - `GET` → List uniform items (filter by guard, payment status)
+  - `PUT ?id=X` → Update payment status / amount paid
+- [ ] Test both via Postman
+
+#### Day 3 (Thu May 22) — Inspections + Notifications APIs
+- [ ] Build **Inspections Edge Function** (`/functions/v1/inspections`)
+  - `POST` → Submit inspection (GPS + photos + remarks)
+  - `GET` → List inspections (filter by site, inspector, date)
+  - `GET ?id=X` → Inspection detail
+  - Validate inspector is at site (geofence check)
+- [ ] Build **Notifications Edge Function** (`/functions/v1/notifications`)
+  - `GET` → List user's notifications
+  - `PUT ?id=X` → Mark as read
+  - `PUT ?action=read-all` → Mark all as read
+  - Internal: helper to create notification (used by other functions)
+- [ ] Test both via Postman
+
+#### Day 4 (Fri May 23) — Dashboard/Reports API + Seed Data
+- [ ] Build **Dashboard Edge Function** (`/functions/v1/dashboard`)
+  - `GET ?view=overview` → Total guards, sites, today's attendance, pending payroll
+  - `GET ?view=attendance-summary&date=X` → Site-wise attendance summary
+  - `GET ?view=monthly-report&month=X` → Monthly report data
+- [ ] Create **seed.sql** with realistic test data
+  - 1 admin, 2 managers, 1 recruiter, 10 guards
+  - 5 sites (Patna locations with real GPS coordinates)
+  - Assignments, sample attendance, sample candidates
+- [ ] Run seed data in SQL Editor
+
+#### Day 5 (Sat May 24) — Full Integration Testing
+- [ ] Create complete **Postman Collection** with all endpoints
+- [ ] Test full workflows end-to-end:
+  - Create guard → Assign to site → Mark attendance (geofence) → Check-out
+  - Add candidate → Move through pipeline → Convert to guard
+  - Submit inspection → View report
+  - Generate payroll → Approve → View salary slip
+- [ ] Fix any bugs found during testing
+- [ ] Export Postman collection to `docs/`
+
+#### Day 6 (Sun May 25) — Backend Polish + Documentation
+- [ ] Fix any remaining bugs from testing
+- [ ] Update `DEPLOYMENT_AND_TESTING.md` with all new endpoints
+- [ ] Update `DATABASE_SCHEMA.md` with any schema changes
+- [ ] Create `docs/API_REFERENCE.md` — complete API documentation
+- [ ] Backend is **FEATURE COMPLETE** ✅
+
+---
+
+### 📅 WEEK 2: React Native App — Core Screens (May 26–Jun 1)
+
+> **Goal:** Set up mobile app, build auth + admin dashboard + guard attendance flow.
+
+#### Day 7 (Mon May 26) — Project Setup
+- [ ] Initialize Expo project with TypeScript
+  - `npx create-expo-app@latest ./ --template blank-typescript`
+- [ ] Install dependencies:
+  - `@supabase/supabase-js`, `zustand`, `react-hook-form`, `zod`
+  - `@react-navigation/native`, `@react-navigation/bottom-tabs`, `@react-navigation/stack`
+  - `expo-location`, `expo-camera`, `expo-image-picker`
+  - `react-native-maps`
+- [ ] Set up folder structure:
+  ```
+  src/
+  ├── api/          # Supabase client + API calls
+  ├── stores/       # Zustand state stores
+  ├── screens/      # All screens grouped by role
+  ├── components/   # Reusable UI components
+  ├── navigation/   # Role-based navigators
+  ├── theme/        # Colors, typography, spacing
+  └── utils/        # Helpers, constants
+  ```
+- [ ] Create design system (Navy Blue `#1B2A4A` + Gold `#D4A843` theme)
+- [ ] Configure Supabase client
+
+#### Day 8 (Tue May 27) — Authentication Flow
+- [ ] OTP login screen (phone input → OTP input)
+- [ ] Integrate with `auth-verify-otp` Edge Function
+- [ ] Token storage (SecureStore)
+- [ ] Auto-login on app launch (token refresh)
+- [ ] Role-based routing after login
+- [ ] Logout functionality
+
+#### Day 9 (Wed May 28) — Admin Dashboard
+- [ ] Admin bottom tab navigation (Dashboard, Guards, Sites, More)
+- [ ] Dashboard overview screen:
+  - Total guards, active sites, today's attendance
+  - Quick stats cards with icons
+  - Recent activity feed
+- [ ] Pull-to-refresh, loading states, error states
+
+#### Day 10 (Thu May 29) — Guard Management Screens (Admin)
+- [ ] Guard list screen (search, filter by status)
+- [ ] Guard detail screen (profile, documents, assignments, attendance history)
+- [ ] Add guard form (React Hook Form + Zod validation)
+- [ ] Edit guard screen
+- [ ] Change guard status (active/inactive/terminated)
+
+#### Day 11 (Fri May 30) — Site Management + Assignment Screens
+- [ ] Site list screen
+- [ ] Site detail screen (map view, assigned guards)
+- [ ] Add/edit site form (with map picker for GPS)
+- [ ] Assign guard to site flow
+- [ ] Unassign guard
+
+#### Day 12 (Sat May 31) — Guard App: Attendance Flow
+- [ ] Guard bottom tab navigation (Attendance, Profile, Salary)
+- [ ] Attendance screen:
+  - Show assigned site info
+  - GPS location check (request permission, show on map)
+  - Geofence status indicator (green = inside, red = outside)
+  - Selfie capture (expo-camera)
+  - Check-in button (disabled if outside fence)
+  - Check-out button (when already checked in)
+- [ ] Attendance history screen
+
+#### Day 13 (Sun Jun 1) — Guard App: Profile + Salary
+- [ ] Guard profile screen (view own details)
+- [ ] Salary slips list
+- [ ] Salary slip detail (breakdown view)
+- [ ] Document viewer (own documents)
+
+---
+
+### 📅 WEEK 3: Remaining Modules + Polish (Jun 2–8)
+
+> **Goal:** Build remaining screens, polish UI, prepare for deployment.
+
+#### Day 14 (Mon Jun 2) — Payroll Screens (Admin)
+- [ ] Payroll generation screen (select month → generate for all)
+- [ ] Payroll list (filter by month, status)
+- [ ] Salary slip detail with breakdown
+- [ ] Approve payroll flow
+- [ ] Uniform deduction management
+
+#### Day 15 (Tue Jun 3) — Recruitment Screens
+- [ ] Candidate list (filter by status, recruiter)
+- [ ] Add candidate form
+- [ ] Candidate detail + status pipeline
+- [ ] Convert-to-guard flow
+- [ ] Recruiter dashboard
+
+#### Day 16 (Wed Jun 4) — Inspection Screens (Manager)
+- [ ] Manager bottom tab navigation
+- [ ] Inspection submission form:
+  - Site selection
+  - Guard presence checklist
+  - Photo upload (min 2)
+  - Remarks + incident reporting
+  - GPS stamp
+- [ ] Inspection history
+
+#### Day 17 (Thu Jun 5) — Notifications + Settings
+- [ ] Notification center (in-app)
+- [ ] Push notification setup (Firebase FCM)
+- [ ] Shift reminders (schedule local notifications)
+- [ ] Settings screen
+- [ ] Profile edit screen
+
+#### Day 18 (Fri Jun 6) — UI Polish + Animations
+- [ ] Review all screens for consistency
+- [ ] Add micro-animations (screen transitions, loading skeletons)
+- [ ] Empty states with illustrations
+- [ ] Error handling + retry mechanisms
+- [ ] Offline mode awareness (show banner when offline)
+- [ ] Dark mode support (optional)
+
+#### Day 19 (Sat Jun 7) — Testing + Bug Fixes
+- [ ] Full end-to-end testing on Android emulator
+- [ ] Full end-to-end testing on iOS simulator
+- [ ] Fix responsive layout issues
+- [ ] Performance optimization (list virtualization, image caching)
+- [ ] Fix any bugs found
+
+#### Day 20 (Sun Jun 8) — Deployment Prep
+- [ ] Configure EAS Build (`eas.json`)
+- [ ] Build Android APK for internal testing
+- [ ] Build iOS IPA (if Mac available)
+- [ ] Update README with mobile app setup instructions
+- [ ] Create demo video / screenshots
+- [ ] **PROJECT MVP COMPLETE** 🚀
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> **1. Firebase vs Supabase Auth?**
+> The SRS mentions Firebase OTP for auth, but current Edge Functions use Supabase Auth. Which do you want to use? Supabase has built-in phone OTP — simpler to integrate. Firebase would need separate setup.
+
+> [!IMPORTANT]
+> **2. React Native or Expo?**
+> SRS says React Native (Expo). Should we use Expo Go for development or bare workflow? Expo Go is faster for development but has limitations with native modules.
+
+> [!IMPORTANT]
+> **3. Admin Web Dashboard?**
+> Do you also want a web-based admin dashboard (React/Next.js) in addition to the mobile app? Or is mobile-only sufficient for Phase 1?
+
+> [!IMPORTANT]
+> **4. Test Data — Real locations?**
+> Should the seed data use real Patna locations (with actual GPS coordinates) for testing geofencing? This would make Postman testing more realistic.
+
+---
+
+## Risk Mitigation
+
+| Risk | Mitigation |
+|------|-----------|
+| Firebase OTP setup delays | Use Supabase built-in phone OTP as fallback |
+| Camera/GPS permissions issues | Test on real devices early (Day 12) |
+| Payroll calculation edge cases | Write unit tests for salary formula |
+| App Store rejection | Follow platform guidelines from Day 1 |
+| Geofence accuracy on low-end phones | Add 20m tolerance buffer |
+
+## Verification Plan
+
+### Automated Tests
+- Postman collection with pre/post scripts for automated API testing
+- Each Edge Function tested with valid + invalid inputs
+
+### Manual Verification
+- Full workflow testing via Postman (Week 1)
+- Mobile app testing on Android emulator + real device (Week 3)
+- Geofence testing with mock GPS coordinates
