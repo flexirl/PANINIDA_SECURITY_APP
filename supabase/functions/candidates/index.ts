@@ -179,6 +179,22 @@ Deno.serve(async (req: Request) => {
       const roleError = requireRole(user, ["admin", "recruiter"]);
       if (roleError) return roleError;
 
+      // Single candidate detail
+      if (candidateId) {
+        const { data: candidate, error: fetchErr } = await supabase
+          .from("candidates")
+          .select("*, users:recruiter_id(name)")
+          .eq("id", candidateId)
+          .single();
+
+        if (fetchErr || !candidate) {
+          return errorResponse("Candidate not found", 404);
+        }
+
+        return jsonResponse({ success: true, candidate });
+      }
+
+      // List / filter candidates
       const status = url.searchParams.get("status");
       const recruiterId = url.searchParams.get("recruiter_id");
       const search = url.searchParams.get("search");

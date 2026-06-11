@@ -121,11 +121,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ======================================================
-    // UPLOAD DOCUMENT (Admin only)
-    // ======================================================
     if (req.method === "POST" && guardId && action === "document") {
-      const roleError = requireRole(user, ["admin"]);
+      if (user.role === "guard" && user.guard_id !== guardId) {
+        return errorResponse("Cannot upload documents for other guards", 403);
+      }
+      const roleError = requireRole(user, ["admin", "guard"]);
       if (roleError) return roleError;
 
       const formData = await req.formData();
@@ -293,11 +293,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true, guard });
     }
 
-    // ======================================================
-    // UPDATE GUARD (Admin only)
-    // ======================================================
     if (req.method === "PUT" && guardId && action !== "status") {
-      const roleError = requireRole(user, ["admin"]);
+      if (user.role === "guard" && user.guard_id !== guardId) {
+        return errorResponse("Cannot update other guard's profile", 403);
+      }
+      const roleError = requireRole(user, ["admin", "guard"]);
       if (roleError) return roleError;
 
       const body = await req.json();
@@ -330,8 +330,8 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Update user name if provided
-      if (body.name) {
+      // Update user name/phone if provided
+      if (body.name || body.phone) {
         const { data: guard } = await supabase
           .from("guards")
           .select("user_id")
@@ -339,9 +339,12 @@ Deno.serve(async (req: Request) => {
           .single();
 
         if (guard) {
+          const userUpdates: Record<string, any> = {};
+          if (body.name) userUpdates.name = body.name.trim();
+          if (body.phone) userUpdates.phone = body.phone.trim();
           await supabase
             .from("users")
-            .update({ name: body.name.trim() })
+            .update(userUpdates)
             .eq("id", guard.user_id);
         }
       }

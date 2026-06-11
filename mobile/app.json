@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Pan India Security",
+    "slug": "pan-india-security",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "panindiasecurity",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a3d6d"
+    },
+    "plugins": [],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.panindiasecurity.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyCunS-H02p8puxwEz6xJyAu_Isma0poius"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a3d6d"
+      },
+      "package": "com.panindiasecurity.app",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCunS-H02p8puxwEz6xJyAu_Isma0poius"
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    }
+  }
+}

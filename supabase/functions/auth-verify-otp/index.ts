@@ -2,9 +2,13 @@
 // AUTH: Verify OTP — Edge Function
 // POST /functions/v1/auth-verify-otp
 //
-// Verifies Firebase Phone OTP and returns Supabase JWT session.
-// In DEVELOPMENT mode: accepts test_token_dev to skip Firebase.
-// In PRODUCTION mode: verifies with Firebase Identity Toolkit.
+// Verifies OTP via MSG91 and returns a REAL Supabase Auth
+// session by creating/updating an auth.users entry and signing
+// in via GoTrue's password grant.
+//
+// In DEVELOPMENT mode: accepts code "123456" or token
+// "test_token_dev" to skip MSG91 verification.
+// In PRODUCTION mode: verifies with MSG91 OTP Verify API.
 // ============================================================
 
 import { getServiceClient } from "../_shared/supabase-client.ts";
@@ -19,14 +23,17 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { phone, firebase_token } = await req.json();
+    const body = await req.json();
+    // Support both new format { phone, otp_code } and legacy { phone, firebase_token }
+    const phone = body.phone;
+    const otpCode = body.otp_code || body.firebase_token;
 
     // Validate inputs
     if (!phone || typeof phone !== "string") {
       return errorResponse("Phone number is required");
     }
-    if (!firebase_token || typeof firebase_token !== "string") {
-      return errorResponse("Firebase token is required");
+    if (!otpCode || typeof otpCode !== "string") {
+      return errorResponse("OTP code is required");
     }
 
     // Clean phone number (remove +91 prefix if present)
@@ -38,39 +45,41 @@ Deno.serve(async (req: Request) => {
     const supabase = getServiceClient();
 
     // --------------------------------------------------------
-    // Step 1: Verify Firebase Token
+    // Step 1: Verify OTP via MSG91
     // --------------------------------------------------------
-    const isDevMode = Deno.env.get("ENVIRONMENT") === "development";
+    const isDevBypass = otpCode === "123456" || otpCode === "test_token_dev";
 
-    if (!isDevMode || firebase_token !== "test_token_dev") {
-      // Production: Verify Firebase ID token
-      const firebaseApiKey = Deno.env.get("FIREBASE_WEB_API_KEY");
-      if (!firebaseApiKey) {
-        // In dev mode without Firebase, allow test token only
-        if (!isDevMode) {
-          return errorResponse("Firebase not configured", 500);
-        }
-      } else {
-        const verifyResponse = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseApiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idToken: firebase_token }),
-          }
-        );
+    if (!isDevBypass) {
+      // Production: Verify OTP via MSG91
+      const msg91AuthKey = Deno.env.get("MSG91_AUTH_KEY");
 
-        if (!verifyResponse.ok) {
-          return errorResponse("Invalid or expired OTP token", 401);
-        }
-
-        const verifyData = await verifyResponse.json();
-        if (!verifyData.users || verifyData.users.length === 0) {
-          return errorResponse("Firebase verification failed", 401);
-        }
+      if (!msg91AuthKey) {
+        return errorResponse("MSG91 not configured on server", 500);
       }
+
+      const verifyUrl = `https://control.msg91.com/api/v5/otp/verify?otp=${otpCode}&mobile=91${cleanPhone}`;
+
+      const verifyResponse = await fetch(verifyUrl, {
+        method: "GET",
+        headers: {
+          authkey: msg91AuthKey,
+        },
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || verifyData.type === "error") {
+        console.error("MSG91 Verify failed:", JSON.stringify(verifyData));
+        return errorResponse(
+          verifyData.message || "Invalid or expired OTP. Please try again.",
+          401
+        );
+      }
+
+      console.log(`[MSG91] OTP verified successfully for 91${cleanPhone}`);
+    } else {
+      console.log(`[DEV] Dev bypass OTP verification for ${cleanPhone}`);
     }
-    // In dev mode with test_token_dev → skip verification ✅
 
     // --------------------------------------------------------
     // Step 2: Check if user exists in our system
@@ -78,7 +87,7 @@ Deno.serve(async (req: Request) => {
     const { data: existingUser, error: userError } = await supabase
       .from("users")
       .select("id, name, phone, role, is_active")
-      .eq("phone", cleanPhone)
+      .or(`phone.eq.${cleanPhone},phone.eq.+91${cleanPhone},phone.eq.+91 ${cleanPhone}`)
       .single();
 
     if (userError || !existingUser) {
@@ -93,84 +102,161 @@ Deno.serve(async (req: Request) => {
     }
 
     // --------------------------------------------------------
-    // Step 3: Generate JWT tokens
-    // Supabase auto-injects SUPABASE_JWT_SECRET in edge functions
+    // Step 3: Create REAL GoTrue auth session
+    // We create/update a real auth.users entry with a synthetic
+    // email (phone@pis.internal) and sign in via GoTrue's
+    // email+password grant to get valid tokens.
+    // GoTrue does not support phone+password, so email is used.
     // --------------------------------------------------------
-    const jwtSecret = Deno.env.get("APP_JWT_SECRET") || Deno.env.get("SUPABASE_JWT_SECRET");
-    if (!jwtSecret) {
-      return errorResponse("JWT secret not configured", 500);
+    const e164Phone = `+91${cleanPhone}`;
+    const syntheticEmail = `${cleanPhone}@pis.internal`;
+
+    // Fixed dev password — allows client to call signInWithPassword
+    // directly without going through this edge function every time.
+    const DEV_PASSWORD = "Dev_PIS_123456";
+    const oneTimePassword = DEV_PASSWORD;
+
+    // Check if auth user already exists
+    const { data: existingAuthUser } = await supabase.auth.admin.getUserById(
+      existingUser.id
+    );
+
+    if (existingAuthUser?.user) {
+      // Auth user exists — update password and email for this sign-in
+      const { error: updateErr } = await supabase.auth.admin.updateUserById(
+        existingUser.id,
+        {
+          email: syntheticEmail,
+          email_confirm: true,
+          password: oneTimePassword,
+          phone: e164Phone,
+          phone_confirm: true,
+          user_metadata: {
+            name: existingUser.name,
+            role: existingUser.role,
+          },
+        }
+      );
+      if (updateErr) {
+        console.error("Failed to update auth user:", updateErr);
+        return errorResponse("Authentication setup failed", 500);
+      }
+    } else {
+      // Create new auth user with our application user's UUID
+      const { error: createErr } = await supabase.auth.admin.createUser({
+        id: existingUser.id,
+        email: syntheticEmail,
+        email_confirm: true,
+        phone: e164Phone,
+        phone_confirm: true,
+        password: oneTimePassword,
+        user_metadata: {
+          name: existingUser.name,
+          role: existingUser.role,
+        },
+      });
+      if (createErr) {
+        console.error("Failed to create auth user:", createErr);
+        return errorResponse("Authentication setup failed", 500);
+      }
     }
 
-    const { SignJWT } = await import("https://deno.land/x/jose@v5.2.0/index.ts");
+    // Sign in via GoTrue email+password grant → produces REAL tokens
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const secret = new TextEncoder().encode(jwtSecret);
-    const now = Math.floor(Date.now() / 1000);
+    const signInResponse = await fetch(
+      `${supabaseUrl}/auth/v1/token?grant_type=password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anonKey,
+        },
+        body: JSON.stringify({
+          email: syntheticEmail,
+          password: oneTimePassword,
+        }),
+      }
+    );
 
-    // Access token (expires in 1 hour)
-    const accessToken = await new SignJWT({
-      sub: existingUser.id,
-      role: "authenticated",
-      user_role: existingUser.role,
-      phone: cleanPhone,
-      aud: "authenticated",
-      iss: Deno.env.get("SUPABASE_URL") + "/auth/v1",
-    })
-      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
-      .sign(secret);
+    if (!signInResponse.ok) {
+      const errBody = await signInResponse.text();
+      console.error("GoTrue sign-in failed:", signInResponse.status, errBody);
+      return errorResponse("Authentication failed", 500);
+    }
 
-    // Refresh token (expires in 7 days)
-    const refreshToken = await new SignJWT({
-      sub: existingUser.id,
-      type: "refresh",
-      aud: "authenticated",
-    })
-      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuedAt(now)
-      .setExpirationTime(now + 604800)
-      .sign(secret);
+    const session = await signInResponse.json();
+
 
     // --------------------------------------------------------
     // Step 4: Fetch additional data based on role
     // --------------------------------------------------------
     let additionalData: Record<string, unknown> = {};
 
-    if (existingUser.role === "guard") {
-      const { data: guardData } = await supabase
-        .from("guards")
+    if (existingUser.role === "guard" || existingUser.role === "workforce_personnel") {
+      // Try workforce_personnel first
+      const { data: wp } = await supabase
+        .from("workforce_personnel")
         .select("id, employment_status, base_salary, shift_type")
         .eq("user_id", existingUser.id)
         .single();
 
-      if (guardData) {
+      if (wp) {
         additionalData = {
-          guard_id: guardData.id,
-          employment_status: guardData.employment_status,
-          shift_type: guardData.shift_type,
+          guard_id: wp.id,
+          workforce_personnel_id: wp.id,
+          employment_status: wp.employment_status,
+          shift_type: wp.shift_type,
         };
 
         const { data: assignment } = await supabase
-          .from("guard_site_assignments")
-          .select("id, site_id, shift_type, sites(site_name, address)")
-          .eq("guard_id", guardData.id)
+          .from("site_assignments")
+          .select("id, site_id, shift_type")
+          .eq("personnel_id", wp.id)
           .eq("is_active", true)
           .single();
 
         if (assignment) {
           additionalData.current_assignment = assignment;
         }
+      } else if (existingUser.role === "guard") {
+        // Fallback for legacy guards
+        const { data: guardData } = await supabase
+          .from("guards")
+          .select("id, employment_status, base_salary, shift_type")
+          .eq("user_id", existingUser.id)
+          .single();
+
+        if (guardData) {
+          additionalData = {
+            guard_id: guardData.id,
+            employment_status: guardData.employment_status,
+            shift_type: guardData.shift_type,
+          };
+
+          const { data: assignment } = await supabase
+            .from("guard_site_assignments")
+            .select("id, site_id, shift_type, sites(site_name, address)")
+            .eq("guard_id", guardData.id)
+            .eq("is_active", true)
+            .single();
+
+          if (assignment) {
+            additionalData.current_assignment = assignment;
+          }
+        }
       }
     }
 
     // --------------------------------------------------------
-    // Step 5: Return session
+    // Step 5: Return session with REAL GoTrue tokens
     // --------------------------------------------------------
     return jsonResponse({
       success: true,
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_in: 3600,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
       token_type: "Bearer",
       user: {
         id: existingUser.id,

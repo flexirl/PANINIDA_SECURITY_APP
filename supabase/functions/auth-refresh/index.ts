@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
 
     // Verify the refresh token
     const { jwtVerify } = await import("https://deno.land/x/jose@v5.2.0/index.ts");
-    const jwtSecret = Deno.env.get("APP_JWT_SECRET") || Deno.env.get("SUPABASE_JWT_SECRET");
+    const jwtSecret = Deno.env.get("SUPABASE_JWT_SECRET") || Deno.env.get("APP_JWT_SECRET");
     if (!jwtSecret) {
       return errorResponse("JWT secret not configured", 500);
     }
