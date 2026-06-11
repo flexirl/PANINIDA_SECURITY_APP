@@ -537,7 +537,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             <TouchableOpacity
               style={s.quickActionItem}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('GuardDocuments')}
+              onPress={() => navigation.navigate('DocumentChecklist', { personnelId })}
             >
               <View style={[s.quickActionIcon, { backgroundColor: '#FFF3E0' }]}>
                 <MaterialIcons name="folder-open" size={24} color="#EF6C00" />

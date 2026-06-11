@@ -10,8 +10,11 @@ import {
   Alert,
   Linking,
   StatusBar,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
@@ -19,7 +22,9 @@ import { getPersonnelById, terminatePersonnel } from '../api/workforcePersonnelS
 import { getDocumentChecklist, verifyDocument } from '../api/workforceDocumentService';
 import { supabase } from '../api/supabase';
 import AttendanceStatusBadge from '../components/AttendanceStatusBadge';
+import Skeleton from '../components/Skeleton';
 import type { WorkforcePersonnel, DocumentChecklistItem, WorkforceAttendance, SiteAssignment } from '../types/workforce';
+import { useFileUpload } from '../hooks/useFileUpload';
 
 interface WorkforcePersonnelDetailScreenProps {
   route: any;
@@ -58,6 +63,77 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const { upload, uploading, progress } = useFileUpload();
+  const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
+
+  // Image Viewer Modal State
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
+  const [viewerTitle, setViewerTitle] = useState('');
+
+  const pickAndUpload = async (docType: string, useCamera: boolean) => {
+    try {
+      let result;
+      if (useCamera) {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is needed. / कैमरा एक्सेस आवश्यक है।');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Required / अनुमति आवश्यक', 'Gallery access is needed. / गैलरी एक्सेस आवश्यक है।');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+      }
+
+      if (!result.canceled && result.assets?.length > 0) {
+        processUpload(docType, result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Error / त्रुटि', err?.message || 'Could not pick image. / छवि चुनने में विफल।');
+    }
+  };
+
+  const handleUpload = (docType: string) => {
+    Alert.alert(
+      'Upload Document / दस्तावेज़ अपलोड करें',
+      'Choose how to upload: / अपलोड कैसे करें चुनें:',
+      [
+        { text: '📷 Camera / कैमरा', onPress: () => pickAndUpload(docType, true) },
+        { text: '🖼️ Gallery / गैलरी', onPress: () => pickAndUpload(docType, false) },
+        { text: 'Cancel / रद्द करें', style: 'cancel' },
+      ]
+    );
+  };
+
+  const processUpload = async (docType: string, fileUri: string) => {
+    try {
+      setActionLoading(true);
+      setUploadingDocType(docType);
+      const uploadRes = await upload({
+        fileUri,
+        category: docType === 'photo' ? 'profiles' : 'documents',
+        personnelId: personnelId,
+        documentType: docType,
+      });
+
+      if (uploadRes.success) {
+        Alert.alert('Success / सफलता', 'Document uploaded successfully. / दस्तावेज़ सफलतापूर्वक अपलोड किया गया।');
+        loadData(true);
+      } else {
+        Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not save document. / दस्तावेज़ सहेज नहीं सके।');
+      }
+    } catch (err: any) {
+      Alert.alert('Error / त्रुटि', err?.message || 'Upload failed. / अपलोड विफल।');
+    } finally {
+      setActionLoading(false);
+      setUploadingDocType(null);
+    }
+  };
 
   const loadData = async (silent = false) => {
     try {
@@ -147,10 +223,72 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
   // ─── Loading State ───
   if (loading) {
     return (
-      <View style={[s.container, s.centerFull]}>
+      <View style={s.container}>
         <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={s.loadingText}>Fetching profile...</Text>
+        {/* Top Bar Skeleton */}
+        <View style={[s.topBar, { paddingTop: insets.top }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.topBarBtn}>
+            <MaterialIcons name="arrow-back" size={24} color={Colors.onSurface} />
+          </TouchableOpacity>
+          <Text style={s.topBarTitle}>Officer Profile</Text>
+          <View style={s.topBarRight}>
+            <View style={s.topBarBtn} />
+            <View style={s.topBarBtn} />
+          </View>
+        </View>
+
+        <ScrollView
+          style={s.scrollView}
+          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Profile Header Card Skeleton */}
+          <View style={s.profileCard}>
+            <View style={s.profileRow}>
+              <Skeleton circle width={68} height={68} />
+              <View style={[s.profileInfo, { gap: 8 }]}>
+                <Skeleton width="60%" height={20} />
+                <Skeleton width="40%" height={14} />
+                <Skeleton width="30%" height={16} borderRadius={8} />
+              </View>
+            </View>
+            <View style={[s.actionRow, { marginTop: 8 }]}>
+              <Skeleton style={{ flex: 1 }} height={42} borderRadius={8} />
+              <Skeleton width={42} height={42} borderRadius={8} />
+            </View>
+          </View>
+
+          {/* Tab Bar Skeleton */}
+          <View style={[s.tabBar, { paddingVertical: 12 }]}>
+            <View style={{ flexDirection: 'row', gap: 16, paddingHorizontal: 16 }}>
+              <Skeleton width={80} height={30} borderRadius={15} />
+              <Skeleton width={100} height={30} borderRadius={15} />
+              <Skeleton width={90} height={30} borderRadius={15} />
+              <Skeleton width={90} height={30} borderRadius={15} />
+            </View>
+          </View>
+
+          {/* Section Card Skeleton */}
+          <View style={s.tabContent}>
+            <View style={s.sectionCard}>
+              <View style={[s.sectionTitleRow, { marginBottom: 16 }]}>
+                <Skeleton width={150} height={20} />
+              </View>
+              <View style={s.infoGrid}>
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <View key={idx} style={[s.infoGridItem, { gap: 6, marginBottom: 12 }]}>
+                    <Skeleton width="50%" height={12} />
+                    <Skeleton width="80%" height={16} />
+                  </View>
+                ))}
+              </View>
+              <View style={[s.infoFullRow, { gap: 6, marginTop: 8 }]}>
+                <Skeleton width="30%" height={12} />
+                <Skeleton width="70%" height={16} />
+              </View>
+            </View>
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -459,14 +597,31 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
                         )}
                         {!isMissing && item.document?.file_url && (
                           <TouchableOpacity
-                            onPress={() => Alert.alert('View Document', 'File URL: ' + item.document!.file_url)}
+                            onPress={() => {
+                              setViewerTitle(item.display_name);
+                              setViewerUrl(item.document!.file_url);
+                              setViewerVisible(true);
+                            }}
                             style={s.viewDocIconBtn}
                           >
                             <MaterialIcons name="visibility" size={18} color={Colors.primary} />
                           </TouchableOpacity>
                         )}
                         {isMissing && (
-                          <MaterialIcons name="cloud-off" size={20} color={Colors.outline} />
+                          uploadingDocType === item.document_type ? (
+                            <View style={s.uploadProgressContainer}>
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                              <Text style={s.uploadProgressText}>{progress}%</Text>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={() => handleUpload(item.document_type)}
+                              style={s.inlineUploadBtn}
+                              disabled={actionLoading}
+                            >
+                              <MaterialIcons name="cloud-upload" size={18} color={Colors.primary} />
+                            </TouchableOpacity>
+                          )
                         )}
                       </View>
                     </View>
@@ -601,6 +756,35 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
           </View>
         )}
       </ScrollView>
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={viewerVisible}
+        transparent={true}
+        onRequestClose={() => setViewerVisible(false)}
+        animationType="fade"
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalHeader}>
+            <Text style={s.modalTitle} numberOfLines={1}>{viewerTitle}</Text>
+            <TouchableOpacity
+              onPress={() => setViewerVisible(false)}
+              style={s.closeButton}
+            >
+              <MaterialIcons name="close" size={24} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+          <View style={s.imageContainer}>
+            {viewerUrl ? (
+              <Image
+                source={{ uri: viewerUrl }}
+                style={s.viewerImage}
+                resizeMode="contain"
+              />
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1224,5 +1408,58 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.outline,
     fontStyle: 'italic',
+  },
+  uploadProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: BorderRadius.lg,
+  },
+  uploadProgressText: {
+    fontSize: 11,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  inlineUploadBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 16,
+  },
+  modalTitle: {
+    ...Typography.h2,
+    color: '#ffffff',
+    flex: 1,
+  },
+  closeButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: BorderRadius.full,
+  },
+  imageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height - 120,
   },
 });

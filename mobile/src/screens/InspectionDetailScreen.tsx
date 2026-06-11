@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
+import Skeleton from '../components/Skeleton';
 import * as inspectionService from '../api/inspectionService';
 
 interface InspectionReport {
@@ -94,9 +95,104 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
 
   if (loading) {
     return (
-      <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, color: Colors.onSurfaceVariant }}>Loading report...</Text>
+      <View style={s.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+
+        {/* TopAppBar Skeleton */}
+        <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
+          <View style={s.topBarInner}>
+            <View style={s.topBarLeft}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={s.backBtn}>
+                <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+              </TouchableOpacity>
+              <Text style={s.topBarTitle}>Inspection Detail</Text>
+            </View>
+            <View style={s.topBarRight}>
+              <View style={s.topBarIconBtn}>
+                <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
+              </View>
+              <View style={s.avatarSmall} />
+            </View>
+          </View>
+        </View>
+
+        <ScrollView style={s.scrollView} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Info Card Skeleton */}
+          <View style={s.infoCard}>
+            <View style={s.infoHeaderRow}>
+              <View style={[s.infoTextWrap, { gap: 8 }]}>
+                <Skeleton width="75%" height={22} />
+                <View style={[s.addressRow, { gap: 6 }]}>
+                  <MaterialIcons name="location-on" size={16} color={Colors.primary} />
+                  <Skeleton width="85%" height={14} />
+                </View>
+              </View>
+              <View style={s.visitDateBadge}>
+                <Skeleton width={80} height={28} borderRadius={8} style={{ backgroundColor: 'rgba(255,255,255,0.2)' }} />
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.gridRow}>
+              <View style={s.gridCell}>
+                <Skeleton circle width={40} height={40} />
+                <View style={{ gap: 4, flex: 1 }}>
+                  <Skeleton width="40%" height={10} />
+                  <Skeleton width="80%" height={14} />
+                </View>
+              </View>
+              <View style={s.gridCell}>
+                <Skeleton circle width={40} height={40} />
+                <View style={{ gap: 4, flex: 1 }}>
+                  <Skeleton width="40%" height={10} />
+                  <Skeleton width="80%" height={14} />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Guard Verification Section Skeleton */}
+          <View style={s.guardsRosterRow}>
+            <View style={[s.guardPanel, s.panelPresent]}>
+              <View style={[s.panelHeader, { gap: 6 }]}>
+                <MaterialIcons name="check-circle" size={18} color={Colors.successGreen} />
+                <Skeleton width="50%" height={14} />
+              </View>
+              <View style={[s.guardsListContainer, { gap: 8 }]}>
+                <Skeleton width="90%" height={30} borderRadius={8} />
+                <Skeleton width="80%" height={30} borderRadius={8} />
+              </View>
+            </View>
+
+            <View style={[s.guardPanel, s.panelAbsent]}>
+              <View style={[s.panelHeader, { gap: 6 }]}>
+                <MaterialIcons name="cancel" size={18} color={Colors.error} />
+                <Skeleton width="50%" height={14} />
+              </View>
+              <View style={[s.guardsListContainer, { gap: 8 }]}>
+                <Skeleton width="85%" height={30} borderRadius={8} />
+              </View>
+            </View>
+          </View>
+
+          {/* Remarks Section Skeleton */}
+          <View style={s.remarksSection}>
+            <View style={[s.sectionHeader, { flexDirection: 'row', gap: 6 }]}>
+              <MaterialIcons name="edit-note" size={20} color={Colors.primary} />
+              <Skeleton width="40%" height={16} />
+            </View>
+            <View style={[s.remarksTextContainer, { height: 60, justifyContent: 'center' }]}>
+              <Skeleton width="95%" height={14} style={{ marginBottom: 6 }} />
+              <Skeleton width="70%" height={14} />
+            </View>
+
+            <View style={s.actionRow}>
+              <Skeleton width="100%" height={44} borderRadius={12} />
+              <Skeleton width="100%" height={44} borderRadius={12} />
+            </View>
+          </View>
+        </ScrollView>
       </View>
     );
   }

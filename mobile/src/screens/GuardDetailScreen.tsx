@@ -22,6 +22,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
+import Skeleton from '../components/Skeleton';
 import * as guardService from '../api/guardService';
 import * as siteService from '../api/siteService';
 import * as attendanceService from '../api/attendanceService';
@@ -942,12 +943,77 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
 
   if (loading && !refreshing) {
     return (
-      <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, color: Colors.outline, fontWeight: '600', fontSize: 14 }}>
-          Accessing officer credentials...
-        </Text>
+      <View style={s.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+        {/* Top Bar Skeleton */}
+        <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
+          <View style={s.topBarInner}>
+            <View style={s.topBarLeft}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+                <MaterialIcons name="arrow-back" size={24} color={Colors.onSurface} />
+              </TouchableOpacity>
+              <Text style={s.topBarTitle}>Officer Profile</Text>
+            </View>
+            <View style={s.topBarRight}>
+              <View style={s.topBarIconBtn} />
+              <View style={s.topBarIconBtn} />
+            </View>
+          </View>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={s.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Profile Header Skeleton */}
+          <View style={s.profileHeader}>
+            <View style={s.headerTop}>
+              <Skeleton circle width={72} height={72} />
+              <View style={[s.headerTextGroup, { gap: 8 }]}>
+                <Skeleton width="70%" height={20} />
+                <Skeleton width="45%" height={14} />
+                <Skeleton width="30%" height={18} borderRadius={10} />
+              </View>
+            </View>
+            <View style={[s.profileActions, { marginTop: 8 }]}>
+              <Skeleton style={{ flex: 1 }} height={40} borderRadius={8} />
+              <Skeleton width={40} height={40} borderRadius={8} />
+            </View>
+          </View>
+
+          {/* Tabs Skeleton */}
+          <View style={[s.tabBar, { paddingVertical: 12 }]}>
+            <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 16 }}>
+              <Skeleton width={80} height={30} borderRadius={15} />
+              <Skeleton width={90} height={30} borderRadius={15} />
+              <Skeleton width={110} height={30} borderRadius={15} />
+              <Skeleton width={100} height={30} borderRadius={15} />
+              <Skeleton width={80} height={30} borderRadius={15} />
+            </View>
+          </View>
+
+          {/* Tab Content (ProfileTab) Skeleton */}
+          <View style={[s.tabContent, { gap: 14 }]}>
+            <View style={s.infoCard}>
+              <View style={[s.infoCardHeader, { marginBottom: 12 }]}>
+                <Skeleton width={160} height={20} />
+              </View>
+              <View style={s.infoGrid}>
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <View key={idx} style={[s.infoRow, { gap: 6, marginBottom: 10 }]}>
+                    <Skeleton width="50%" height={10} />
+                    <Skeleton width="80%" height={16} />
+                  </View>
+                ))}
+                <View style={[s.infoRow, { width: '100%', gap: 6, marginTop: 4 }]}>
+                  <Skeleton width="20%" height={10} />
+                  <Skeleton width="90%" height={16} />
+                </View>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
       </View>
     );
   }

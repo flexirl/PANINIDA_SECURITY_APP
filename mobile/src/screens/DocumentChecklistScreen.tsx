@@ -7,14 +7,20 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getPersonnelById } from '../api/workforcePersonnelService';
-import { getDocumentChecklist, uploadDocument, verifyDocument } from '../api/workforceDocumentService';
+import { getDocumentChecklist, verifyDocument } from '../api/workforceDocumentService';
 import type { DocumentChecklistItem, WorkforcePersonnel } from '../types/workforce';
+import { useFileUpload } from '../hooks/useFileUpload';
+import { useAuth } from '../hooks/useAuth';
 
 interface DocumentChecklistScreenProps {
   route: any;
@@ -25,11 +31,20 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
   const { personnelId } = route.params;
   const insets = useSafeAreaInsets();
   const s = useScaledStyles(styles);
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   const [personnel, setPersonnel] = useState<WorkforcePersonnel | null>(null);
   const [checklist, setChecklist] = useState<DocumentChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
+  const { upload, uploading, progress } = useFileUpload();
+
+  // Image Viewer Modal State
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
+  const [viewerTitle, setViewerTitle] = useState('');
 
   const loadData = async (silent = false) => {
     try {
@@ -54,30 +69,67 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
     loadData();
   }, [personnelId]);
 
-  const handleUpload = async (docType: string) => {
-    Alert.alert('Simulate Upload', 'Choose document image to upload:', [
-      {
-        text: 'Aadhaar Sample.jpg',
-        onPress: () => processUpload(docType, 'https://lh3.googleusercontent.com/aida-public/AB6AXuCQ1nR-azIGzwp04pulq6olrkEqAb1txijCpWpJdEUL2C84FKePxt77NS2Hn8UW9CsJPJkugrwhCY6hePFIXW5_Q-QVNBBn6MSXo1B9u6ZMjgAnSg1-NwcAR3o20ChzVMO1HVOKhcVesFsHMQxMqurEaMg2eAFs-TIcUJxxzrPgLm7OrFQ8uN_8-yGhkIuWrlny29UxzziSSj3K0H6JbXJHHXny9-KXM9ND_lQa4gSHSofs__S_66Zm6OCpDjMEmLi4lUm05ExxfXc')
-      },
-      {
-        text: 'PAN Sample.jpg',
-        onPress: () => processUpload(docType, 'https://lh3.googleusercontent.com/aida-public/AB6AXuCQ1nR-azIGzwp04pulq6olrkEqAb1txijCpWpJdEUL2C84FKePxt77NS2Hn8UW9CsJPJkugrwhCY6hePFIXW5_Q-QVNBBn6MSXo1B9u6ZMjgAnSg1-NwcAR3o20ChzVMO1HVOKhcVesFsHMQxMqurEaMg2eAFs-TIcUJxxzrPgLm7OrFQ8uN_8-yGhkIuWrlny29UxzziSSj3K0H6JbXJHHXny9-KXM9ND_lQa4gSHSofs__S_66Zm6OCpDjMEmLi4lUm05ExxfXc')
-      },
-      { text: 'Cancel', style: 'cancel' }
-    ]);
+  const pickAndUpload = async (docType: string, useCamera: boolean) => {
+    try {
+      let result;
+      if (useCamera) {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is needed. / कैमरा एक्सेस आवश्यक है।');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Required / अनुमति आवश्यक', 'Gallery access is needed. / गैलरी एक्सेस आवश्यक है।');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+      }
+
+      if (!result.canceled && result.assets?.length > 0) {
+        processUpload(docType, result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Error / त्रुटि', err?.message || 'Could not pick image. / छवि चुनने में विफल।');
+    }
+  };
+
+  const handleUpload = (docType: string) => {
+    Alert.alert(
+      'Upload Document / दस्तावेज़ अपलोड करें',
+      'Choose how to upload: / अपलोड कैसे करें चुनें:',
+      [
+        { text: '📷 Camera / कैमरा', onPress: () => pickAndUpload(docType, true) },
+        { text: '🖼️ Gallery / गैलरी', onPress: () => pickAndUpload(docType, false) },
+        { text: 'Cancel / रद्द करें', style: 'cancel' },
+      ]
+    );
   };
 
   const processUpload = async (docType: string, fileUri: string) => {
     try {
       setActionLoading(true);
-      await uploadDocument(personnelId, docType, fileUri);
-      Alert.alert('Success', 'Document uploaded successfully. Awaiting admin verification.');
-      loadData(true);
+      setUploadingDocType(docType);
+      const uploadRes = await upload({
+        fileUri,
+        category: docType === 'photo' ? 'profiles' : 'documents',
+        personnelId: personnelId,
+        documentType: docType,
+      });
+
+      if (uploadRes.success) {
+        Alert.alert('Success / सफलता', 'Document uploaded successfully. Awaiting admin verification. / दस्तावेज़ सफलतापूर्वक अपलोड किया गया। व्यवस्थापक सत्यापन की प्रतीक्षा है।');
+        loadData(true);
+      } else {
+        Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not save document. Please try again. / दस्तावेज़ सहेज नहीं सके। कृपया पुनः प्रयास करें।');
+      }
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Upload failed.');
+      Alert.alert('Error / त्रुटि', err?.message || 'Upload failed. / अपलोड विफल।');
     } finally {
       setActionLoading(false);
+      setUploadingDocType(null);
     }
   };
 
@@ -122,13 +174,17 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
           {item.status !== 'missing' && item.document?.file_url && (
             <TouchableOpacity
               style={s.iconBtn}
-              onPress={() => Alert.alert('View Document', 'File URL: ' + item.document!.file_url)}
+              onPress={() => {
+                setViewerTitle(item.display_name);
+                setViewerUrl(item.document!.file_url);
+                setViewerVisible(true);
+              }}
             >
               <MaterialIcons name="visibility" size={20} color={Colors.primary} />
             </TouchableOpacity>
           )}
 
-          {item.status === 'pending' && item.document && (
+          {item.status === 'pending' && item.document && isAdmin && (
             <TouchableOpacity
               style={s.verifyBtn}
               onPress={() => handleVerify(item.document!.id)}
@@ -139,24 +195,38 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
           )}
 
           {item.status === 'missing' && (
-            <TouchableOpacity
-              style={s.uploadBtn}
-              onPress={() => handleUpload(item.document_type)}
-              disabled={actionLoading}
-            >
-              <MaterialIcons name="cloud-upload" size={16} color={Colors.onPrimary} />
-              <Text style={s.uploadText}>Upload</Text>
-            </TouchableOpacity>
+            uploadingDocType === item.document_type ? (
+              <View style={s.uploadProgressContainer}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={s.uploadProgressText}>{progress}%</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={s.uploadBtn}
+                onPress={() => handleUpload(item.document_type)}
+                disabled={actionLoading}
+              >
+                <MaterialIcons name="cloud-upload" size={16} color={Colors.onPrimary} />
+                <Text style={s.uploadText}>Upload</Text>
+              </TouchableOpacity>
+            )
           )}
 
           {item.status === 'pending' && (
-            <TouchableOpacity
-              style={[s.uploadBtn, s.reuploadBtn]}
-              onPress={() => handleUpload(item.document_type)}
-              disabled={actionLoading}
-            >
-              <Text style={s.reuploadText}>Re-upload</Text>
-            </TouchableOpacity>
+            uploadingDocType === item.document_type ? (
+              <View style={s.uploadProgressContainer}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={s.uploadProgressText}>{progress}%</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[s.uploadBtn, s.reuploadBtn]}
+                onPress={() => handleUpload(item.document_type)}
+                disabled={actionLoading}
+              >
+                <Text style={s.reuploadText}>Re-upload</Text>
+              </TouchableOpacity>
+            )
           )}
         </View>
       </View>
@@ -207,6 +277,35 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
           />
         </View>
       )}
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={viewerVisible}
+        transparent={true}
+        onRequestClose={() => setViewerVisible(false)}
+        animationType="fade"
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalHeader}>
+            <Text style={s.modalTitle} numberOfLines={1}>{viewerTitle}</Text>
+            <TouchableOpacity
+              onPress={() => setViewerVisible(false)}
+              style={s.closeButton}
+            >
+              <MaterialIcons name="close" size={24} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+          <View style={s.imageContainer}>
+            {viewerUrl ? (
+              <Image
+                source={{ uri: viewerUrl }}
+                style={s.viewerImage}
+                resizeMode="contain"
+              />
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -362,5 +461,50 @@ const styles = StyleSheet.create({
   reuploadText: {
     ...Typography.labelSm,
     color: Colors.onSurfaceVariant,
+  },
+  uploadProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: BorderRadius.lg,
+  },
+  uploadProgressText: {
+    ...Typography.labelSm,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 16,
+  },
+  modalTitle: {
+    ...Typography.h2,
+    color: '#ffffff',
+    flex: 1,
+  },
+  closeButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: BorderRadius.full,
+  },
+  imageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height - 120,
   },
 });

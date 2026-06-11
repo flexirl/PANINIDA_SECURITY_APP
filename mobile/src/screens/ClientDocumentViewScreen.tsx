@@ -23,7 +23,8 @@ import type { WorkforcePersonnel, WorkforceDocument } from '../types/workforce';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const PERMITTED_DOC_TYPES = [
-  { type: 'aadhaar', name: 'Aadhaar Card' },
+  { type: 'aadhaar_front', name: 'Aadhaar Front' },
+  { type: 'aadhaar_back', name: 'Aadhaar Back' },
   { type: 'pan', name: 'PAN Card' },
   { type: 'police_verification', name: 'Police Verification' },
   { type: 'security_training_certificate', name: 'Security Training Certificate' },

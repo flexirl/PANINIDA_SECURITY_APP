@@ -19,6 +19,11 @@ import {
   errorResponse,
 } from "../_shared/auth-middleware.ts";
 import { validateGuard } from "../_shared/validators.ts";
+import {
+  computeFileHash,
+  createAuditLog,
+  getClientIP,
+} from "../_shared/upload-utils.ts";
 
 Deno.serve(async (req: Request) => {
   const corsResponse = handleCors(req);
@@ -173,6 +178,45 @@ Deno.serve(async (req: Request) => {
       if (docError) {
         console.error("Document record error:", docError);
         return errorResponse("File uploaded but failed to save record", 500);
+      }
+
+      // ─── Register in uploaded_files registry & Audit Log (Req 6, 13) ───
+      try {
+        const fileData = await file.arrayBuffer();
+        const hash = await computeFileHash(fileData);
+        const category = documentType === "photo" ? "profiles" : "documents";
+
+        const { data: fileRecord, error: registryError } = await supabase
+          .from("uploaded_files")
+          .insert({
+            file_path: fileName,
+            bucket_name: "guard-documents",
+            file_size_bytes: file.size,
+            mime_type: file.type,
+            category: category,
+            uploaded_by: user.id,
+            personnel_id: guardId,
+            original_filename: file.name,
+            md5_hash: hash,
+            metadata: { source: "legacy_guards_api", document_type: documentType }
+          })
+          .select("id")
+          .single();
+
+        if (registryError) {
+          console.error("Failed to register file in registry:", registryError.message);
+        } else if (fileRecord) {
+          await createAuditLog(supabase, {
+            file_id: fileRecord.id,
+            operation: "upload",
+            user_id: user.id,
+            ip_address: getClientIP(req),
+            user_agent: req.headers.get("user-agent") || "unknown",
+            metadata: { source: "legacy_guards_api", document_type: documentType }
+          });
+        }
+      } catch (err: any) {
+        console.error("Failed to create audit log / registry entry:", err.message);
       }
 
       // If it's a photo, also update guard's photo_url

@@ -19,12 +19,14 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { useAuth } from '../hooks/useAuth';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
+import { useFileUpload } from '../hooks/useFileUpload';
 
 export default function ProfileScreen({ navigation }: { navigation: any }) {
   const s = useScaledStyles(styles);
   const insets = useSafeAreaInsets();
   const { user, updateProfile } = useAuth();
   const { getLabel } = usePersonnelCategory();
+  const { upload } = useFileUpload();
 
   // Profile Editable Details
   const [isEditMode, setIsEditMode] = useState(false);
@@ -54,17 +56,33 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         const rawPhone = phone.replace(/\D/g, '');
         const dbPhone = rawPhone.length === 10 ? rawPhone : phone;
 
+        let uploadedAvatarUrl = avatar;
+        if (avatar && !avatar.startsWith('http')) {
+          const uploadRes = await upload({
+            fileUri: avatar,
+            category: 'profiles',
+          });
+
+          if (uploadRes.success && uploadRes.url) {
+            uploadedAvatarUrl = uploadRes.url;
+          } else {
+            Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not upload profile photo. Please try again. / प्रोफ़ाइल फ़ोटो अपलोड नहीं कर सके। कृपया पुनः प्रयास करें।');
+            setSaving(false);
+            return;
+          }
+        }
+
         if (updateProfile) {
           await updateProfile({
             name: name.trim(),
             phone: dbPhone,
-            avatar_url: avatar,
+            avatar_url: uploadedAvatarUrl,
           });
         }
-        Alert.alert('Profile Saved', 'Your updated profile information has been saved successfully.');
+        Alert.alert('Profile Saved / प्रोफ़ाइल सहेजी गई', 'Your updated profile information has been saved successfully. / आपकी अद्यतन प्रोफ़ाइल जानकारी सफलतापूर्वक सहेज ली गई है।');
         setIsEditMode(false);
       } catch (err: any) {
-        Alert.alert('Save Failed', err.message || 'Could not update profile. Please try again.');
+        Alert.alert('Save Failed / सहेजना विफल', err.message || 'Could not update profile. Please try again. / प्रोफ़ail अपडेट नहीं कर सके। कृपया पुनः प्रयास करें।');
       } finally {
         setSaving(false);
       }

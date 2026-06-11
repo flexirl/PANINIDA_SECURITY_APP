@@ -19,6 +19,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import { useLocation } from '../hooks/useLocation';
+import { useFileUpload } from '../hooks/useFileUpload';
 import * as attendanceService from '../api/attendanceService';
 import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
@@ -58,11 +59,13 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { coords: gpsCoords, error: locationError, loading: locationLoading, getCurrentLocation } = useLocation();
+  const { upload: uploadFile, uploading: uploadingFile, progress: uploadProgress } = useFileUpload();
 
   const [siteDetails, setSiteDetails] = useState<any>(null);
   const [attendanceRecord, setAttendanceRecord] = useState<any>(null);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
+  const [selfieStorageUrl, setSelfieStorageUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [attendanceRequired, setAttendanceRequired] = useState(true);
   const [secondsWorked, setSecondsWorked] = useState(0);
@@ -239,6 +242,28 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
       setSubmitting(true);
       const todayStr = new Date().toISOString().split('T')[0];
 
+      // ── Upload selfie to storage first (fixes critical bug: raw URIs were lost after app restart) ──
+      let uploadedSelfieUrl = selfieStorageUrl; // Use already-uploaded URL if available
+      if (selfieUri && !selfieStorageUrl) {
+        const uploadResult = await uploadFile({
+          fileUri: selfieUri,
+          category: 'attendance',
+          personnelId: personnelId,
+          metadata: { type: isCheckedIn ? 'check_out' : 'check_in', date: todayStr },
+        });
+
+        if (!uploadResult.success) {
+          Alert.alert(
+            'Upload Failed / अपलोड विफल',
+            uploadResult.error?.message || 'Failed to upload selfie. / सेल्फी अपलोड करने में विफल।'
+          );
+          setSubmitting(false);
+          return;
+        }
+        uploadedSelfieUrl = uploadResult.url || null;
+        setSelfieStorageUrl(uploadedSelfieUrl);
+      }
+
       if (user.role === 'workforce_personnel' || user.workforce_personnel_id) {
         if (!isCheckedIn) {
           // Check-in
@@ -250,7 +275,7 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
               site_id: siteId,
               attendance_date: todayStr,
               check_in_time: checkInTime,
-              check_in_selfie: selfieUri,
+              check_in_selfie: uploadedSelfieUrl,
               check_in_latitude: gpsCoords?.latitude || null,
               check_in_longitude: gpsCoords?.longitude || null,
               status: 'present',
@@ -262,6 +287,7 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
           if (error) throw error;
           setAttendanceRecord(data);
           setIsCheckedIn(true);
+          setSelfieStorageUrl(null); // Reset for check-out selfie
           Alert.alert('Success / सफलता', 'Checked in successfully. / चेक इन सफलतापूर्वक पूरा हुआ।');
         } else {
           // Check-out
@@ -270,7 +296,7 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
             .from('workforce_attendance')
             .update({
               check_out_time: checkOutTime,
-              check_out_selfie: selfieUri,
+              check_out_selfie: uploadedSelfieUrl,
             })
             .eq('id', attendanceRecord.id)
             .select()
@@ -286,19 +312,20 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
           const res = await attendanceService.checkIn({
             guard_id: personnelId,
             site_id: siteId,
-            selfie_url: selfieUri,
+            selfie_url: uploadedSelfieUrl,
             latitude: gpsCoords?.latitude || 0,
             longitude: gpsCoords?.longitude || 0,
           } as any);
           setAttendanceRecord(res);
           setIsCheckedIn(true);
+          setSelfieStorageUrl(null); // Reset for check-out selfie
           Alert.alert('Success / सफलता', 'Checked in successfully. / चेक इन सफलतापूर्वक पूरा हुआ।');
         } else {
           const res = await attendanceService.checkOut(attendanceRecord.id, {
             guard_id: personnelId,
             latitude: gpsCoords?.latitude || 0,
             longitude: gpsCoords?.longitude || 0,
-            selfie_url: selfieUri,
+            selfie_url: uploadedSelfieUrl,
           } as any);
           setAttendanceRecord(res);
           Alert.alert('Success / सफलता', 'Checked out successfully. / चेक आउट सफलतापूर्वक पूरा हुआ।');
@@ -562,10 +589,17 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
               (!isInside || !selfieUri) && s.checkInBtnDisabled,
             ]}
             onPress={handleCheckInAction}
-            disabled={submitting || !isInside || !selfieUri}
+            disabled={submitting || uploadingFile || !isInside || !selfieUri}
           >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+            {submitting || uploadingFile ? (
+              <View style={{ alignItems: 'center' }}>
+                <ActivityIndicator size="small" color="#ffffff" />
+                {uploadingFile && (
+                  <Text style={{ color: '#ffffff', fontSize: 10, marginTop: 4 }}>
+                    Uploading selfie... {uploadProgress}%
+                  </Text>
+                )}
+              </View>
             ) : (
               <Text style={s.checkInBtnText}>
                 {isCheckedIn ? 'CHECK OUT / चेक आउट' : 'CHECK IN / चेक इन'}

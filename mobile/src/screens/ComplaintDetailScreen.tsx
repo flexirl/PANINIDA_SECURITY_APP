@@ -15,6 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
+import Skeleton from '../components/Skeleton';
 import { getComplaintById, addComment, resolveComplaint } from '../api/complaintService';
 import { supabase } from '../api/supabase';
 import type { Complaint, ComplaintComment, UserRole } from '../types/workforce';
@@ -133,8 +134,59 @@ export default function ComplaintDetailScreen({ route, navigation }: ComplaintDe
 
   if (loading) {
     return (
-      <View style={[s.container, s.center]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={s.container}>
+        {/* Header Skeleton */}
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 16) }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
+            <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Complaint Detail</Text>
+          <View style={s.timelineBtn}>
+            <MaterialIcons name="history" size={24} color={Colors.primary} />
+          </View>
+        </View>
+
+        <ScrollView contentContainerStyle={s.scrollContent}>
+          {/* Main Info Card Skeleton */}
+          <View style={s.card}>
+            <View style={[s.titleRow, { marginBottom: 16 }]}>
+              <Skeleton width="50%" height={22} />
+              <Skeleton width="15%" height={20} borderRadius={4} />
+            </View>
+
+            <View style={{ gap: 8, marginBottom: 20 }}>
+              <Skeleton width="100%" height={16} />
+              <Skeleton width="90%" height={16} />
+              <Skeleton width="60%" height={16} />
+            </View>
+
+            <View style={s.metadataGrid}>
+              <View style={s.metaCol}>
+                <Skeleton width="40%" height={10} style={{ marginBottom: 6 }} />
+                <Skeleton width="60%" height={16} />
+              </View>
+              <View style={s.metaCol}>
+                <Skeleton width="40%" height={10} style={{ marginBottom: 6 }} />
+                <Skeleton width="60%" height={16} />
+              </View>
+            </View>
+          </View>
+
+          {/* Activity Log Skeleton */}
+          <View style={s.commentsSection}>
+            <Skeleton width="35%" height={18} style={{ marginBottom: 12 }} />
+            {Array.from({ length: 2 }).map((_, idx) => (
+              <View key={idx} style={[s.commentCard, { gap: 8 }]}>
+                <View style={[s.cmtHeader, { marginBottom: 4 }]}>
+                  <Skeleton width="50%" height={12} />
+                  <Skeleton width="20%" height={10} />
+                </View>
+                <Skeleton width="90%" height={14} />
+                <Skeleton width="40%" height={10} style={{ marginTop: 4 }} />
+              </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
     );
   }

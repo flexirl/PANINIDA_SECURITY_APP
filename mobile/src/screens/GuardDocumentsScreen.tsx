@@ -18,6 +18,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import * as guardService from '../api/guardService';
+import { useFileUpload } from '../hooks/useFileUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,6 +40,7 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+  const { upload } = useFileUpload();
 
   // Local checklist of documents mapping to the HTML Mockup
   const [documents, setDocuments] = useState<DocItem[]>([
@@ -171,7 +173,7 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
 
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission Required', 'Camera access is required to scan the document.');
+      Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is required to scan the document. / दस्तावेज़ स्कैन करने के लिए कैमरा एक्सेस आवश्यक है।');
       return;
     }
 
@@ -184,18 +186,23 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
       const selectedUri = result.assets[0].uri;
       setUploadingDoc(docName);
       try {
-        await guardService.uploadGuardDocument(
-          user.guard_id,
-          docType,
-          selectedUri,
-          `${docName}_${Date.now()}.jpg`
-        );
-        Alert.alert('Success', `${docName} uploaded successfully!`);
-        // Refresh document list
-        await loadDocuments();
+        const uploadRes = await upload({
+          fileUri: selectedUri,
+          category: docType === 'photo' ? 'profiles' : 'documents',
+          personnelId: user.guard_id,
+          documentType: docType,
+        });
+
+        if (uploadRes.success) {
+          Alert.alert('Success / सफलता', `${docName} uploaded successfully! / ${docName} सफलतापूर्वक अपलोड किया गया!`);
+          // Refresh document list
+          await loadDocuments();
+        } else {
+          Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not save document. Please try again.');
+        }
       } catch (err) {
         console.error('Document upload error:', err);
-        Alert.alert('Upload Failed', 'Could not save document. Please try again.');
+        Alert.alert('Upload Failed / अपलोड विफल', 'Could not save document. Please try again. / दस्तावेज़ सहेज नहीं सके। कृपया पुनः प्रयास करें।');
       } finally {
         setUploadingDoc(null);
       }

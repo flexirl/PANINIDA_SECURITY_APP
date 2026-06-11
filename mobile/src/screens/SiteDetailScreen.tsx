@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
+import Skeleton from '../components/Skeleton';
 import * as siteService from '../api/siteService';
 import * as inspectionService from '../api/inspectionService';
 import { useLocation } from '../hooks/useLocation';
@@ -1170,12 +1171,79 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
 
   if (loading && !refreshing) {
     return (
-      <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, color: Colors.outline, fontWeight: '600', fontSize: 14 }}>
-          Accessing geo-fencing logs...
-        </Text>
+      <View style={s.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#002752" />
+
+        {/* Top Navbar Skeleton */}
+        <View style={[s.topNavbar, { paddingTop: insets.top }]}>
+          <View style={s.brandHeader}>
+            <View style={s.brandLogoWrap}>
+              <View style={[s.brandLogo, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+              <Text style={s.brandText}>PIS</Text>
+            </View>
+            <View style={s.notificationBtn}>
+              <MaterialIcons name="notifications" size={22} color="rgba(255,255,255,0.5)" />
+            </View>
+          </View>
+          <View style={s.titleBar}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={s.backButtonNavbar}>
+              <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={s.titleBarText}>Site Detail</Text>
+          </View>
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContainer}>
+          {/* Hero Section Skeleton */}
+          <View style={s.heroSection}>
+            <Skeleton width="60%" height={24} style={{ backgroundColor: 'rgba(255,255,255,0.25)', marginBottom: 8 }} />
+            <View style={[s.heroLocationContainer, { width: '80%' }]}>
+              <MaterialIcons name="location-on" size={16} color="rgba(255,255,255,0.6)" style={s.heroLocationIcon} />
+              <Skeleton width="90%" height={14} style={{ backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            </View>
+          </View>
+
+          {/* Tab Switcher Skeleton */}
+          <View style={[s.tabSwitcherContainer, { paddingVertical: 12 }]}>
+            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16 }}>
+              <Skeleton width={120} height={36} borderRadius={18} />
+              <Skeleton width={130} height={36} borderRadius={18} />
+              <Skeleton width={100} height={36} borderRadius={18} />
+            </View>
+          </View>
+
+          {/* Overview Metrics Cards Skeleton */}
+          <View style={{ paddingHorizontal: 16, gap: 16 }}>
+            <View style={s.metricsGrid}>
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <View key={idx} style={s.metricCard}>
+                  <View style={[s.metricHeader, { gap: 6 }]}>
+                    <Skeleton circle width={24} height={24} />
+                    <Skeleton width="60%" height={12} />
+                  </View>
+                  <Skeleton width="40%" height={28} style={{ marginVertical: 10 }} />
+                  <Skeleton width="80%" height={12} />
+                </View>
+              ))}
+            </View>
+
+            {/* Status indicators */}
+            <View style={[s.statusIndicatorsSection, { marginTop: 8, gap: 12 }]}>
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <View key={idx} style={[s.statusBar, { backgroundColor: Colors.surfaceContainer, height: 64, borderLeftWidth: 4, borderLeftColor: Colors.surfaceContainerHigh }]}>
+                  <View style={[s.statusBarLeft, { flex: 1, gap: 12 }]}>
+                    <Skeleton circle width={24} height={24} />
+                    <View style={{ flex: 1, gap: 6 }}>
+                      <Skeleton width="50%" height={16} />
+                      <Skeleton width="80%" height={12} />
+                    </View>
+                  </View>
+                  <Skeleton width={20} height={20} borderRadius={10} />
+                </View>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
       </View>
     );
   }

@@ -16,6 +16,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getPersonnel } from '../api/workforcePersonnelService';
 import { assignPersonnelToSite } from '../api/siteAssignmentService';
+import { getSites } from '../api/siteService';
 import { supabase } from '../api/supabase';
 import CategoryBadge from '../components/CategoryBadge';
 import type { WorkforcePersonnel, ShiftType } from '../types/workforce';
@@ -26,19 +27,24 @@ interface AssignPersonnelScreenProps {
 }
 
 export default function AssignPersonnelScreen({ route, navigation }: AssignPersonnelScreenProps) {
-  const { siteId } = route.params || {};
+  const { siteId, personnelId } = route.params || {};
   const insets = useSafeAreaInsets();
   const s = useScaledStyles(styles);
 
   const [siteName, setSiteName] = useState('');
   const [personnelList, setPersonnelList] = useState<any[]>([]);
+  const [sitesList, setSitesList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // Form states
   const [selectedPersonnel, setSelectedPersonnel] = useState<any | null>(null);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(siteId || null);
+  const [selectedSite, setSelectedSite] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [siteSearchQuery, setSiteSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [siteDropdownOpen, setSiteDropdownOpen] = useState(false);
   const [shiftType, setShiftType] = useState<ShiftType>('day');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -47,14 +53,30 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
       try {
         setLoading(true);
 
-        // Fetch site name
+        // Fetch sites list first
+        const allSites = await getSites();
+        setSitesList(allSites);
+
+        // Fetch site details if siteId was passed
         if (siteId) {
-          const { data: site } = await supabase
-            .from('sites')
-            .select('site_name')
-            .eq('id', siteId)
-            .single();
-          if (site) setSiteName(site.site_name);
+          const matchedSite = allSites.find(st => st.id === siteId);
+          if (matchedSite) {
+            setSelectedSiteId(siteId);
+            setSelectedSite(matchedSite);
+            setSiteName(matchedSite.site_name);
+          } else {
+            // Fallback: Fetch directly if not in active list
+            const { data: site } = await supabase
+              .from('sites')
+              .select('id, site_name, client_name, address')
+              .eq('id', siteId)
+              .single();
+            if (site) {
+              setSelectedSiteId(site.id);
+              setSelectedSite(site);
+              setSiteName(site.site_name);
+            }
+          }
         }
 
         // Fetch all active personnel
@@ -82,13 +104,21 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
         }));
 
         setPersonnelList(formatted);
+
+        // Pre-select personnel if personnelId was passed
+        if (personnelId) {
+          const matchedPersonnel = formatted.find(p => p.id === personnelId);
+          if (matchedPersonnel) {
+            setSelectedPersonnel(matchedPersonnel);
+          }
+        }
       } catch (err: any) {
         Alert.alert('Error', 'Failed to retrieve deployment details: ' + err.message);
       } finally {
         setLoading(false);
       }
     })();
-  }, [siteId]);
+  }, [siteId, personnelId]);
 
   const handleAssign = () => {
     if (!selectedPersonnel) {
@@ -109,7 +139,7 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
           try {
             setSubmitting(true);
             await assignPersonnelToSite({
-              site_id: siteId,
+              site_id: selectedSiteId,
               personnel_id: selectedPersonnel.id,
               shift_type: shiftType,
               start_date: startDate
@@ -158,12 +188,87 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
           keyboardShouldPersistTaps="handled"
         >
           <View style={s.card}>
-            <Text style={s.cardSubtitle}>Target Location</Text>
-            <Text style={s.siteName}>{siteName || 'Select a site'}</Text>
+            {/* Site Dropdown Picker */}
+            <View style={s.inputGroup}>
+              <Text style={s.label}>Select Site *</Text>
+              
+              {selectedSite ? (
+                <View style={s.selectedPersonnelCard}>
+                  <View style={s.selectedInfo}>
+                    <Text style={s.selectedName}>{selectedSite.site_name}</Text>
+                    <Text style={s.selectedId}>
+                      {selectedSite.client_name || 'No Client'} • {selectedSite.address}
+                    </Text>
+                  </View>
+                  {!siteId && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedSite(null);
+                        setSelectedSiteId(null);
+                        setSiteName('');
+                      }}
+                      style={s.clearBtn}
+                    >
+                      <MaterialIcons name="close" size={20} color={Colors.outline} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  <View style={s.searchContainer}>
+                    <MaterialIcons name="search" size={20} color={Colors.outline} style={s.searchIcon} />
+                    <TextInput
+                      style={s.searchInput}
+                      value={siteSearchQuery}
+                      onChangeText={(val) => {
+                        setSiteSearchQuery(val);
+                        setSiteDropdownOpen(true);
+                      }}
+                      onFocus={() => setSiteDropdownOpen(true)}
+                      placeholder="Search by site name or client..."
+                      placeholderTextColor={Colors.outline}
+                    />
+                  </View>
+
+                  {siteDropdownOpen && siteSearchQuery.length > 0 && (
+                    <View style={s.dropdown}>
+                      <FlatList
+                        data={sitesList.filter(st =>
+                          st.site_name.toLowerCase().includes(siteSearchQuery.toLowerCase()) ||
+                          (st.client_name && st.client_name.toLowerCase().includes(siteSearchQuery.toLowerCase()))
+                        ).slice(0, 5)}
+                        keyExtractor={(item) => item.id}
+                        keyboardShouldPersistTaps="handled"
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={s.dropdownItem}
+                            onPress={() => {
+                              setSelectedSite(item);
+                              setSelectedSiteId(item.id);
+                              setSiteName(item.site_name);
+                              setSiteDropdownOpen(false);
+                              setSiteSearchQuery('');
+                            }}
+                          >
+                            <View>
+                              <Text style={s.dropName}>{item.site_name}</Text>
+                              <Text style={s.dropSub}>{item.client_name || 'No Client'} • {item.address}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        )}
+                        ListEmptyComponent={
+                          <Text style={s.emptyDrop}>No matching sites found</Text>
+                        }
+                      />
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
 
             <View style={s.divider} />
 
-            {/* Search Dropdown Picker */}
+            {/* Employee Dropdown Picker */}
             <View style={s.inputGroup}>
               <Text style={s.label}>Select Employee *</Text>
               
@@ -175,12 +280,14 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
                       {selectedPersonnel.employee_id} • Current: {selectedPersonnel.currentSite}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => setSelectedPersonnel(null)}
-                    style={s.clearBtn}
-                  >
-                    <MaterialIcons name="close" size={20} color={Colors.outline} />
-                  </TouchableOpacity>
+                  {!personnelId && (
+                    <TouchableOpacity
+                      onPress={() => setSelectedPersonnel(null)}
+                      style={s.clearBtn}
+                    >
+                      <MaterialIcons name="close" size={20} color={Colors.outline} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <View>

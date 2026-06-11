@@ -24,6 +24,7 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { useAuth } from '../hooks/useAuth';
 import * as guardService from '../api/guardService';
+import { useFileUpload } from '../hooks/useFileUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -87,6 +88,7 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
   // Image Upload
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const { upload } = useFileUpload();
 
   // Dropdown Modal States
   const [bloodModalVisible, setBloodModalVisible] = useState(false);
@@ -185,7 +187,7 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
 
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission Required', 'Camera access is required to take a profile photo.');
+      Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is required to take a profile photo. / प्रोफ़ाइल फ़ोटो लेने के लिए कैमरा एक्सेस आवश्यक है।');
       return;
     }
 
@@ -200,25 +202,29 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
       const selectedUri = result.assets[0].uri;
       setUploadingAvatar(true);
       try {
-        const docResult = await guardService.uploadGuardDocument(
-          guardId,
-          'photo',
-          selectedUri,
-          `avatar_${Date.now()}.jpg`
-        );
-
-        await guardService.updateGuard(guardId, {
-          photo_url: docResult.document_url,
+        const uploadRes = await upload({
+          fileUri: selectedUri,
+          category: 'profiles',
+          personnelId: guardId,
+          documentType: 'photo',
         });
 
-        if (!isAdminEdit) {
-          await refreshProfile();
+        if (uploadRes.success && uploadRes.url) {
+          await guardService.updateGuard(guardId, {
+            photo_url: uploadRes.url,
+          });
+
+          if (!isAdminEdit) {
+            await refreshProfile();
+          }
+          setAvatarUri(uploadRes.url);
+          Alert.alert('Success / सफलता', 'Profile photo updated successfully! / प्रोफ़ाइल फ़ोटो सफलतापूर्वक अपडेट हो गई!');
+        } else {
+          Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
         }
-        setAvatarUri(docResult.document_url);
-        Alert.alert('Success', 'Profile photo updated successfully!');
       } catch (uploadErr) {
         console.error('Failed to upload avatar:', uploadErr);
-        Alert.alert('Upload Failed', 'Could not update profile photo.');
+        Alert.alert('Upload Failed / अपलोड विफल', 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
       } finally {
         setUploadingAvatar(false);
       }

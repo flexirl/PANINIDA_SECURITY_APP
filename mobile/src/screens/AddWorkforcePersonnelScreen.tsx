@@ -21,8 +21,10 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { createPersonnel, getPersonnelById, updatePersonnel } from '../api/workforcePersonnelService';
 import { getCategories } from '../api/workforceCategoryService';
+import { getDocumentsForPersonnel } from '../api/workforceDocumentService';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFileUpload } from '../hooks/useFileUpload';
 import type { WorkforceCategory, ShiftType } from '../types/workforce';
 
 interface AddWorkforcePersonnelScreenProps {
@@ -236,6 +238,7 @@ export default function AddWorkforcePersonnelScreen({
 
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { upload } = useFileUpload();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [showGenderPicker, setShowGenderPicker] = useState(false);
@@ -327,6 +330,27 @@ export default function AddWorkforcePersonnelScreen({
               ...prev,
               photo: p.photo_url || null,
             }));
+            
+            // Load existing uploaded files from workforce_documents
+            try {
+              const wpDocs = await getDocumentsForPersonnel(personnelId);
+              const docsMap: any = {
+                photo: p.photo_url || null,
+                aadhaarFront: null,
+                aadhaarBack: null,
+                gunLicense: null,
+                pvr: null,
+              };
+              wpDocs.forEach(d => {
+                if (d.document_type === 'aadhaar_front') docsMap.aadhaarFront = d.file_url;
+                if (d.document_type === 'aadhaar_back') docsMap.aadhaarBack = d.file_url;
+                if (d.document_type === 'gun_license') docsMap.gunLicense = d.file_url;
+                if (d.document_type === 'police_verification') docsMap.pvr = d.file_url;
+              });
+              setDocs(docsMap);
+            } catch (docErr) {
+              console.warn('Failed to load personnel documents (non-fatal):', docErr);
+            }
           }
         } catch (err: any) {
           Alert.alert('Error', 'Failed to load personnel profile details: ' + err.message);
@@ -443,6 +467,34 @@ export default function AddWorkforcePersonnelScreen({
     return Object.keys(newErrors).length === 0;
   };
 
+  const uploadAdditionalDocs = async (targetPersonnelId: string) => {
+    const docsToUpload = [
+      { key: 'aadhaarFront', type: 'aadhaar_front' },
+      { key: 'aadhaarBack', type: 'aadhaar_back' },
+      { key: 'gunLicense', type: 'gun_license' },
+      { key: 'pvr', type: 'police_verification' },
+    ];
+
+    for (const item of docsToUpload) {
+      const fileUri = docs[item.key as keyof typeof docs];
+      if (fileUri && !fileUri.startsWith('http')) {
+        try {
+          const res = await upload({
+            fileUri,
+            category: 'documents',
+            personnelId: targetPersonnelId,
+            documentType: item.type,
+          });
+          if (!res.success) {
+            console.warn(`Failed to upload ${item.key}:`, res.error);
+          }
+        } catch (uploadErr) {
+          console.warn(`Error uploading ${item.key}:`, uploadErr);
+        }
+      }
+    }
+  };
+
   // ─── Submit ───
   const handleSubmit = async () => {
     Keyboard.dismiss();
@@ -454,6 +506,24 @@ export default function AddWorkforcePersonnelScreen({
     setIsSubmitting(true);
 
     try {
+      // ── Upload photo if it's a local URI (not a http URL) ──
+      let uploadedPhotoUrl = docs.photo || undefined;
+      if (docs.photo && !docs.photo.startsWith('http')) {
+        const uploadRes = await upload({
+          fileUri: docs.photo,
+          category: 'profiles',
+          personnelId: personnelId || undefined,
+        });
+
+        if (uploadRes.success && uploadRes.url) {
+          uploadedPhotoUrl = uploadRes.url;
+        } else {
+          Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not upload profile photo. / प्रोफ़ाइल फ़ोटो अपलोड नहीं की जा सकी।');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const cleanAadhaar = aadhaar.replace(/-/g, '');
       const cleanPhone = phone.replace(/\D/g, '');
 
@@ -472,7 +542,7 @@ export default function AddWorkforcePersonnelScreen({
         aadhaar_number: cleanAadhaar || undefined,
         pan_number: panNumber.trim().toUpperCase() || undefined,
         address: address.trim() || undefined,
-        photo_url: docs.photo || undefined,
+        photo_url: uploadedPhotoUrl,
         dob: dob || undefined,
         gender: gender || undefined,
         education: education || undefined,
@@ -481,6 +551,7 @@ export default function AddWorkforcePersonnelScreen({
 
       if (editMode && personnelId) {
         await updatePersonnel(personnelId, payload);
+        await uploadAdditionalDocs(personnelId);
         Alert.alert(
           'Success',
           'Personnel profile updated successfully.',
@@ -490,6 +561,7 @@ export default function AddWorkforcePersonnelScreen({
         const newPersonnel = await createPersonnel(payload);
         setCreatedEmployeeId(newPersonnel.employee_id);
         setCreatedPersonnelId(newPersonnel.id);
+        await uploadAdditionalDocs(newPersonnel.id);
         setSuccessModalVisible(true);
       }
     } catch (err: any) {

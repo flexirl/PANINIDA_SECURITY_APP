@@ -12,6 +12,7 @@ export async function uploadImage(
   localUri: string,
   pathPrefix: string = ''
 ): Promise<string> {
+  console.warn('[DEPRECATED] uploadImage() is deprecated. Use useFileUpload hook instead.');
   try {
     // 1. Generate a unique file name
     const fileExtension = localUri.split('.').pop() || 'jpg';

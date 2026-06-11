@@ -23,6 +23,7 @@ import { useAuth } from '../hooks/useAuth';
 import * as guardService from '../api/guardService';
 import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
+import { useFileUpload } from '../hooks/useFileUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
   const [siteDetails, setSiteDetails] = useState<any>(null);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const { upload } = useFileUpload();
 
   // Status pulse animation
   const pulseAnim = useRef(new Animated.Value(0.5)).current;
@@ -149,7 +151,7 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
 
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission Required', 'Camera access is required to take a profile photo.');
+      Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is required to take a profile photo. / प्रोफ़ाइल फ़ोटो लेने के लिए कैमरा एक्सेस आवश्यक है।');
       return;
     }
 
@@ -164,23 +166,27 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
       const selectedUri = result.assets[0].uri;
       setUploadingAvatar(true);
       try {
-        const docResult = await guardService.uploadGuardDocument(
-          user.guard_id,
-          'photo',
-          selectedUri,
-          `avatar_${Date.now()}.jpg`
-        );
-
-        await guardService.updateGuard(user.guard_id, {
-          photo_url: docResult.document_url,
+        const uploadRes = await upload({
+          fileUri: selectedUri,
+          category: 'profiles',
+          personnelId: user.guard_id,
+          documentType: 'photo',
         });
 
-        await refreshProfile();
-        setAvatarUri(docResult.document_url);
-        Alert.alert('Success', 'Profile photo updated successfully!');
+        if (uploadRes.success && uploadRes.url) {
+          await guardService.updateGuard(user.guard_id, {
+            photo_url: uploadRes.url,
+          });
+
+          await refreshProfile();
+          setAvatarUri(uploadRes.url);
+          Alert.alert('Success / सफलता', 'Profile photo updated successfully! / प्रोफ़ाइल फ़ोटो सफलतापूर्वक अपडेट हो गई!');
+        } else {
+          Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
+        }
       } catch (uploadErr) {
         console.error('Failed to upload avatar:', uploadErr);
-        Alert.alert('Upload Failed', 'Could not update profile photo.');
+        Alert.alert('Upload Failed / अपलोड विफल', 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
       } finally {
         setUploadingAvatar(false);
       }
@@ -495,7 +501,7 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
           <TouchableOpacity
             activeOpacity={0.8}
             style={s.actionBtn}
-            onPress={() => navigation.navigate('GuardDocuments')}
+            onPress={() => navigation.navigate('DocumentChecklist', { personnelId: user?.guard_id || (user as any)?.workforce_personnel_id })}
           >
             <View style={s.actionBtnLeft}>
               <MaterialIcons name="security" size={22} color={Colors.primary} />

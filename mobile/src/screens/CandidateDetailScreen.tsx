@@ -20,6 +20,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
+import Skeleton from '../components/Skeleton';
 import * as candidateService from '../api/candidateService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -123,9 +124,65 @@ export default function CandidateDetailScreen({ navigation, route }: CandidateDe
 
   if (loading) {
     return (
-      <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, color: Colors.onSurfaceVariant }}>Loading candidate...</Text>
+      <View style={s.container}>
+        <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+
+        {/* Top Bar Skeleton */}
+        <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
+          <View style={s.topBarLeft}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={s.backBtn}>
+              <MaterialIcons name="arrow-back" size={24} color={Colors.onPrimary} />
+            </TouchableOpacity>
+            <Text style={s.topBarTitle}>Candidate Profile</Text>
+          </View>
+          <TouchableOpacity activeOpacity={0.7} style={s.topBarIconBtn}>
+            <MaterialIcons name="more-vert" size={24} color={Colors.onPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={s.scrollView} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Profile Card Skeleton */}
+          <View style={[s.profileCard, { alignItems: 'center', gap: 8 }]}>
+            <Skeleton circle width={80} height={80} />
+            <Skeleton width="50%" height={22} style={{ marginTop: 8 }} />
+            <Skeleton width="35%" height={14} />
+            <Skeleton width="25%" height={20} borderRadius={10} style={{ marginTop: 6 }} />
+            
+            <View style={[s.profileActions, { gap: 16, marginTop: 12 }]}>
+              <Skeleton circle width={42} height={42} />
+              <Skeleton circle width={42} height={42} />
+              <Skeleton circle width={42} height={42} />
+            </View>
+          </View>
+
+          {/* Stepper Card Skeleton */}
+          <View style={s.stepperCard}>
+            <Skeleton width="45%" height={18} style={{ marginBottom: 16 }} />
+            <View style={{ flexDirection: 'row', gap: 14 }}>
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <View key={idx} style={{ alignItems: 'center', gap: 8 }}>
+                  <Skeleton circle width={36} height={36} />
+                  <Skeleton width={50} height={10} />
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Recruiter Notes Card Skeleton */}
+          <View style={s.notesCard}>
+            <View style={[s.notesCardHeader, { marginBottom: 12 }]}>
+              <Skeleton width="40%" height={18} />
+              <Skeleton width={90} height={26} borderRadius={13} />
+            </View>
+            <View style={{ gap: 12 }}>
+              <View style={[s.noteItem, { gap: 6, padding: 12, backgroundColor: Colors.surfaceContainerLow }]}>
+                <Skeleton width="90%" height={14} />
+                <Skeleton width="60%" height={14} />
+                <Skeleton width="40%" height={10} style={{ marginTop: 4 }} />
+              </View>
+            </View>
+          </View>
+        </ScrollView>
       </View>
     );
   }

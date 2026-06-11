@@ -34,7 +34,8 @@ export async function getDocumentsForPersonnel(personnelId: string): Promise<Wor
 export function getRequiredDocumentsForCategory(prefix: string): { type: string; name: string }[] {
   // Base required documents for all personnel (Req 6.1)
   const list = [
-    { type: 'aadhaar', name: 'Aadhaar Card' },
+    { type: 'aadhaar_front', name: 'Aadhaar Front' },
+    { type: 'aadhaar_back', name: 'Aadhaar Back' },
     { type: 'pan', name: 'PAN Card' },
     { type: 'address_proof', name: 'Address Proof' },
     { type: 'bank_passbook', name: 'Bank Passbook' },
