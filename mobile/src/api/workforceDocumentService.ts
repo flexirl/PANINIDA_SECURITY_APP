@@ -34,12 +34,12 @@ export async function getDocumentsForPersonnel(personnelId: string): Promise<Wor
 export function getRequiredDocumentsForCategory(prefix: string): { type: string; name: string }[] {
   // Base required documents for all personnel (Req 6.1)
   const list = [
-    { type: 'aadhaar_front', name: 'Aadhaar Front' },
-    { type: 'aadhaar_back', name: 'Aadhaar Back' },
-    { type: 'pan', name: 'PAN Card' },
-    { type: 'address_proof', name: 'Address Proof' },
-    { type: 'bank_passbook', name: 'Bank Passbook' },
-    { type: 'photo', name: 'Photograph' },
+    { type: 'aadhaar_front', name: 'Aadhaar Front / आधार फ्रंट' },
+    { type: 'aadhaar_back', name: 'Aadhaar Back / आधार बैक' },
+    { type: 'pan', name: 'PAN Card / पैन कार्ड' },
+    { type: 'address_proof', name: 'Address Proof / पते का प्रमाण' },
+    { type: 'bank_passbook', name: 'Bank Passbook / बैंक पासबुक' },
+    { type: 'photo', name: 'Photograph / फोटो' },
   ];
 
   const securityPrefixes = ['PIS', 'GM', 'RM', 'PSO', 'BNC', 'SUP', 'SO'];
@@ -48,23 +48,23 @@ export function getRequiredDocumentsForCategory(prefix: string): { type: string;
   // Security personnel (Req 6.2)
   if (securityPrefixes.includes(prefix)) {
     list.push(
-      { type: 'police_verification', name: 'Police Verification Certificate' },
-      { type: 'security_training', name: 'Security Training Certificate' }
+      { type: 'police_verification', name: 'Police Verification Certificate / पुलिस सत्यापन प्रमाण पत्र' },
+      { type: 'security_training', name: 'Security Training Certificate / सुरक्षा प्रशिक्षण प्रमाण पत्र' }
     );
   }
 
   // Armed personnel (Req 6.3)
   if (armedPrefixes.includes(prefix)) {
     list.push(
-      { type: 'gun_license', name: 'Gun License' },
-      { type: 'ex_servicemen_proof', name: 'Ex-Servicemen Proof' },
-      { type: 'weapon_training', name: 'Weapon Training Certificate' }
+      { type: 'gun_license', name: 'Gun License / गन लाइसेंस' },
+      { type: 'ex_servicemen_proof', name: 'Ex-Servicemen Proof / पूर्व सैनिक प्रमाण' },
+      { type: 'weapon_training', name: 'Weapon Training Certificate / हथियार प्रशिक्षण प्रमाण पत्र' }
     );
   }
 
   // Housekeeping personnel (Req 6.4)
   if (prefix === 'HK') {
-    list.push({ type: 'medical_fitness', name: 'Medical Fitness Certificate' });
+    list.push({ type: 'medical_fitness', name: 'Medical Fitness Certificate / मेडिकल फिटनेस प्रमाण पत्र' });
   }
 
   return list;

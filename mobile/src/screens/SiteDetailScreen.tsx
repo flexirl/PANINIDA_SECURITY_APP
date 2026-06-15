@@ -15,6 +15,7 @@ import {
   RefreshControl,
   TextInput,
   Switch,
+  Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +24,8 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import Skeleton from '../components/Skeleton';
 import * as siteService from '../api/siteService';
-import * as inspectionService from '../api/inspectionService';
+import * as siteAssignmentService from '../api/siteAssignmentService';
+import * as workforceAttendanceService from '../api/workforceAttendanceService';
 import { useLocation } from '../hooks/useLocation';
 import { supabase } from '../api/supabase';
 
@@ -36,8 +38,8 @@ interface SiteDetailProps {
   route?: any;
 }
 
-interface GuardItem {
-  id: string; // guard_id
+interface PersonnelItem {
+  id: string; // personnel_id
   assignmentId?: string; // assignment record UUID
   name: string;
   shift: 'DAY' | 'NIGHT';
@@ -50,11 +52,14 @@ interface GuardItem {
   categoryName?: string;
 }
 
-interface InspectionItem {
-  id: string;
-  date: string;
-  inspectorName: string;
-  status: 'ALL CLEAR' | 'INCIDENT REPORTED';
+interface AttendanceRecord {
+  personnelId: string;
+  personnelName: string;
+  categoryName: string;
+  status: 'present' | 'absent' | 'not_marked';
+  checkInTime?: string;
+  checkOutTime?: string;
+  hoursWorked?: number;
 }
 
 export default function SiteDetailScreen({ navigation, route }: SiteDetailProps) {
@@ -67,12 +72,15 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [siteDetails, setSiteDetails] = useState<siteService.SiteProfile | null>(null);
-  const [assignedGuards, setAssignedGuards] = useState<GuardItem[]>([]);
-  const [inspections, setInspections] = useState<InspectionItem[]>([]);
-  const [attendanceStats, setAttendanceStats] = useState({ present: 0, absent: 0 });
+  const [assignedPersonnel, setAssignedPersonnel] = useState<PersonnelItem[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState({ present: 0, absent: 0, notMarked: 0 });
 
   // Navigation tab state
   const [activeTab, setActiveTab] = useState<'Profile' | 'Guards' | 'Inspections' | 'Settings'>('Profile');
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   // Edit settings form state
   const [editAddress, setEditAddress] = useState('');
@@ -243,17 +251,14 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
     }
 
     try {
-      const [details, guardAssignments, inspectionRecords] = await Promise.all([
+      // Fetch site details and assignments from new site_assignments table
+      const [details, siteAssignments] = await Promise.all([
         siteService.getSiteDetail(siteId).catch(err => {
           console.warn('getSiteDetail failed, falling back to params', err);
           return null;
         }),
-        siteService.getAssignments({ site_id: siteId }).catch(err => {
-          console.warn('getAssignments failed', err);
-          return [];
-        }),
-        inspectionService.getInspections({ site_id: siteId }).catch(err => {
-          console.warn('getInspections failed', err);
+        siteAssignmentService.getAssignmentsForSite(siteId).catch(err => {
+          console.warn('getAssignmentsForSite failed', err);
           return [];
         }),
       ]);
@@ -262,32 +267,11 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
         setSiteDetails(details);
       }
 
-      // Map assigned guards
-      // Fetch employee_ids and categories from workforce_personnel for all assigned guards
-      const guardIds = guardAssignments.map((a: any) => a.guard_id).filter(Boolean);
-      let employeeIdMap: { [id: string]: string } = {};
-      let categoryMap: { [id: string]: { name: string; prefix_code: string } } = {};
-      if (guardIds.length > 0) {
-        const { data: wpData } = await supabase
-          .from('workforce_personnel')
-          .select('id, employee_id, category:workforce_categories(name, prefix_code)')
-          .in('id', guardIds);
-        if (wpData) {
-          wpData.forEach((wp: any) => {
-            if (wp.employee_id) employeeIdMap[wp.id] = wp.employee_id;
-            if (wp.category) {
-              categoryMap[wp.id] = {
-                name: (wp.category as any).name || '',
-                prefix_code: (wp.category as any).prefix_code || '',
-              };
-            }
-          });
-        }
-      }
-
-      const mappedGuards: GuardItem[] = guardAssignments.map((assignment: any) => {
-        const guardName = assignment.guards?.name || 'Unknown Guard';
-        const nameParts = guardName.trim().split(' ');
+      // Map assigned personnel — personnel data comes directly from the join
+      const mappedPersonnel: PersonnelItem[] = siteAssignments.map((assignment: any) => {
+        const person = assignment.personnel;
+        const personnelName = person?.name || 'Unknown';
+        const nameParts = personnelName.trim().split(' ');
         const initials = nameParts.length > 1
           ? (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
           : nameParts[0].substring(0, 2).toUpperCase();
@@ -302,64 +286,82 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
         ];
         const charSum = initials.charCodeAt(0) + (initials.charCodeAt(1) || 0);
         const initialsColor = initialsColors[charSum % initialsColors.length];
-        const catInfo = categoryMap[assignment.guard_id];
 
         return {
-          id: assignment.guard_id,
+          id: person?.id || assignment.personnel_id,
           assignmentId: assignment.id,
-          name: guardName,
-          shift: assignment.shift_type.toUpperCase() as 'DAY' | 'NIGHT',
+          name: personnelName,
+          shift: (assignment.shift_type || 'day').toUpperCase() as 'DAY' | 'NIGHT',
           status: assignment.is_active ? 'On-Duty' : 'Off-Duty',
-          avatar: assignment.guards?.photo_url || undefined,
+          avatar: person?.photo_url || undefined,
           initials,
           initialsColor,
-          badge: employeeIdMap[assignment.guard_id] || assignment.guard_id,
-          categoryPrefix: catInfo?.prefix_code || '',
-          categoryName: catInfo?.name || '',
+          badge: person?.employee_id || '',
+          categoryPrefix: person?.category?.prefix_code || '',
+          categoryName: person?.category?.name || '',
         };
       });
-      setAssignedGuards(mappedGuards);
+      setAssignedPersonnel(mappedPersonnel);
 
-      // Query today's attendance records to compute present/absent stats
+      // Query today's attendance records for this site
       const todayStr = new Date().toISOString().split('T')[0];
-      const { data: attData } = await supabase
-        .from('workforce_attendance')
-        .select('personnel_id, status')
-        .eq('site_id', siteId)
-        .eq('attendance_date', todayStr);
+      let attRecords: AttendanceRecord[] = [];
+      try {
+        const attData = await workforceAttendanceService.getAttendanceForSite(siteId, todayStr);
+        const attendanceMap = new Map<string, any>();
+        (attData || []).forEach(a => {
+          attendanceMap.set(a.personnel_id, a);
+        });
 
-      const presentCount = attData ? attData.filter(a => a.status === 'present' || a.status === 'present_verified').length : 0;
-      const absentCount = Math.max(0, mappedGuards.length - presentCount);
-      setAttendanceStats({ present: presentCount, absent: absentCount });
+        // Build per-person attendance records
+        let presentCount = 0;
+        let absentCount = 0;
+        let notMarkedCount = 0;
 
-      // Map inspections
-      const mappedInspections: InspectionItem[] = inspectionRecords.map((record) => {
-        let dateStr = 'N/A';
-        if (record.created_at) {
-          try {
-            const dateObj = new Date(record.created_at);
-            dateStr = dateObj.toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            }) + ' • ' + dateObj.toLocaleTimeString('en-IN', {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-            });
-          } catch (e) {
-            dateStr = 'Just Now';
+        attRecords = mappedPersonnel.map(p => {
+          const att = attendanceMap.get(p.id);
+          if (att) {
+            const isPresent = att.status === 'present' || att.status === 'present_verified';
+            if (isPresent) {
+              presentCount++;
+            } else if (att.status === 'absent') {
+              absentCount++;
+            } else {
+              presentCount++; // other statuses like 'corrected' count as present
+            }
+            return {
+              personnelId: p.id,
+              personnelName: p.name,
+              categoryName: p.categoryName || '',
+              status: isPresent ? 'present' as const : 'absent' as const,
+              checkInTime: att.check_in_time ? new Date(att.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : undefined,
+              checkOutTime: att.check_out_time ? new Date(att.check_out_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : undefined,
+              hoursWorked: att.hours_worked || undefined,
+            };
+          } else {
+            notMarkedCount++;
+            return {
+              personnelId: p.id,
+              personnelName: p.name,
+              categoryName: p.categoryName || '',
+              status: 'not_marked' as const,
+            };
           }
-        }
+        });
 
-        return {
-          id: record.id,
-          date: dateStr,
-          inspectorName: record.inspector?.name || 'Area Officer',
-          status: record.incident_reported ? 'INCIDENT REPORTED' : 'ALL CLEAR',
-        };
-      });
-      setInspections(mappedInspections);
+        setAttendanceStats({ present: presentCount, absent: absentCount, notMarked: notMarkedCount });
+      } catch (attErr) {
+        console.warn('Error loading attendance data:', attErr);
+        // If attendance fails, mark all as not_marked
+        attRecords = mappedPersonnel.map(p => ({
+          personnelId: p.id,
+          personnelName: p.name,
+          categoryName: p.categoryName || '',
+          status: 'not_marked' as const,
+        }));
+        setAttendanceStats({ present: 0, absent: 0, notMarked: mappedPersonnel.length });
+      }
+      setAttendanceRecords(attRecords);
 
     } catch (err) {
       console.error('Error loading site detail metrics:', err);
@@ -452,7 +454,7 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
     loadSiteData();
   }, []);
 
-  const handleAssignGuard = () => {
+  const handleAssignPersonnel = () => {
     navigation.navigate('AssignGuard', {
       siteId: siteId,
       siteName: siteDetails?.site_name || fallbackSiteName,
@@ -460,14 +462,14 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
     });
   };
 
-  const handleGuardPress = (guardId: string) => {
-    navigation.navigate('GuardDetail', { guardId });
+  const handlePersonnelPress = (personnelId: string) => {
+    navigation.navigate('GuardDetail', { guardId: personnelId });
   };
 
-  const handleUnassignGuard = (assignmentId: string, guardName: string) => {
+  const handleUnassignPersonnel = (assignmentId: string, personnelName: string) => {
     Alert.alert(
       'Remove Assignment',
-      `Are you sure you want to unassign ${guardName} from this site?`,
+      `Are you sure you want to unassign ${personnelName} from this site?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -476,12 +478,12 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
           onPress: async () => {
             try {
               setLoading(true);
-              await siteService.unassignGuard(assignmentId);
-              Alert.alert('Success', 'Guard unassigned successfully.');
+              await siteAssignmentService.deactivateAssignment(assignmentId);
+              Alert.alert('Success', 'Personnel unassigned successfully.');
               loadSiteData();
             } catch (err: any) {
-              console.error('Error unassigning guard:', err);
-              Alert.alert('Error', err.message || 'Failed to unassign guard.');
+              console.error('Error unassigning personnel:', err);
+              Alert.alert('Error', err.message || 'Failed to unassign personnel.');
               setLoading(false);
             }
           }
@@ -524,6 +526,7 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
 
       setSiteDetails(updated);
       Alert.alert('Success', 'Site configuration updated successfully!');
+      setShowSettingsModal(false);
       setActiveTab('Profile');
     } catch (err: any) {
       console.error('Error saving site settings:', err);
@@ -547,12 +550,12 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
   const nightShift = siteDetails ? `${siteDetails.night_shift_start || '08:00 PM'} - ${siteDetails.night_shift_end || '08:00 AM'}` : '08:00 PM - 08:00 AM';
 
   const renderProfileTab = () => {
-    let totalPersonnel = assignedGuards.length;
+    let totalPersonnel = assignedPersonnel.length;
     let securityCount = 0;
     let hkCount = 0;
     let supervisorCount = 0;
 
-    assignedGuards.forEach((g) => {
+    assignedPersonnel.forEach((g) => {
       const prefix = (g.categoryPrefix || '').toUpperCase();
       const name = (g.categoryName || '').toLowerCase();
       if (['HK', 'SWP', 'GRD'].includes(prefix) || name.includes('housekeeping') || name.includes('sweeper') || name.includes('gardener')) {
@@ -674,57 +677,57 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
       <Animated.View style={{ opacity: opacityAnim, transform: [{ translateY: slideAnim }] }}>
         <View style={s.guardsSection}>
           <View style={s.guardsHeader}>
-            <Text style={s.guardsSectionTitle}>Assigned Security Personnel</Text>
+            <Text style={s.guardsSectionTitle}>Assigned Personnel</Text>
             <View style={s.activeGuardsBadge}>
               <Text style={s.activeGuardsBadgeText}>
-                {assignedGuards.length} Total
+                {assignedPersonnel.length} Total
               </Text>
             </View>
           </View>
 
           <View style={s.guardsList}>
-            {assignedGuards.length === 0 ? (
+            {assignedPersonnel.length === 0 ? (
               <View style={s.emptyGuardsList}>
                 <MaterialIcons name="group-off" size={32} color={Colors.outline} />
                 <Text style={s.emptyGuardsText}>
-                  No security guards assigned to this site yet.
+                  No personnel assigned to this site yet.
                 </Text>
               </View>
             ) : (
-              assignedGuards.map((guard) => (
-                <View key={guard.id} style={s.guardCardInteractive}>
+              assignedPersonnel.map((person) => (
+                <View key={person.id} style={s.guardCardInteractive}>
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    onPress={() => handleGuardPress(guard.id)}
+                    onPress={() => handlePersonnelPress(person.id)}
                     style={s.guardCardInteractiveLeft}
                   >
-                    {guard.avatar ? (
-                      <Image source={{ uri: guard.avatar }} style={s.guardAvatar} />
+                    {person.avatar ? (
+                      <Image source={{ uri: person.avatar }} style={s.guardAvatar} />
                     ) : (
-                      <View style={[s.guardAvatarFallback, { backgroundColor: guard.initialsColor }]}>
-                        <Text style={s.guardAvatarFallbackText}>{guard.initials}</Text>
+                      <View style={[s.guardAvatarFallback, { backgroundColor: person.initialsColor }]}>
+                        <Text style={s.guardAvatarFallbackText}>{person.initials}</Text>
                       </View>
                     )}
                     <View style={s.guardInfo}>
-                      <Text style={s.guardName}>{guard.name}</Text>
-                      <Text style={s.guardBadgeId}>Badge: {guard.badge || '#N/A'}</Text>
+                      <Text style={s.guardName}>{person.name}</Text>
+                      <Text style={s.guardBadgeId}>{person.categoryName || 'Personnel'} • {person.badge || '#N/A'}</Text>
                       <View style={s.guardMetaRow}>
-                        <Text style={s.guardMetaLabel}>Shift: {guard.shift}</Text>
+                        <Text style={s.guardMetaLabel}>Shift: {person.shift}</Text>
                         <Text style={s.guardMetaDivider}>•</Text>
                         <Text style={[
                           s.guardMetaStatus,
-                          { color: guard.status === 'On-Duty' ? Colors.successGreen : Colors.outline }
+                          { color: person.status === 'On-Duty' ? Colors.successGreen : Colors.outline }
                         ]}>
-                          {guard.status}
+                          {person.status}
                         </Text>
                       </View>
                     </View>
                   </TouchableOpacity>
 
-                  {guard.assignmentId && (
+                  {person.assignmentId && (
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => handleUnassignGuard(guard.assignmentId!, guard.name)}
+                      onPress={() => handleUnassignPersonnel(person.assignmentId!, person.name)}
                       style={s.unassignBtn}
                     >
                       <MaterialIcons name="person-remove" size={20} color={Colors.secondary} />
@@ -737,63 +740,12 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
 
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={handleAssignGuard}
+            onPress={handleAssignPersonnel}
             style={s.assignGuardBtn}
           >
             <MaterialIcons name="person-add" size={20} color={Colors.primary} />
-            <Text style={s.assignGuardBtnText}>Assign Guard</Text>
+            <Text style={s.assignGuardBtnText}>Assign Personnel</Text>
           </TouchableOpacity>
-        </View>
-      </Animated.View>
-    );
-  };
-
-  const renderInspectionsTab = () => {
-    return (
-      <Animated.View style={{ opacity: opacityAnim, transform: [{ translateY: slideAnim }] }}>
-        <View style={s.sectionContainer}>
-          <Text style={s.tabSectionTitle}>Perimeter Inspections</Text>
-          <View style={s.inspectionsCard}>
-            {inspections.length === 0 ? (
-              <View style={{ padding: 24, alignItems: 'center' }}>
-                <MaterialIcons name="fact-check" size={36} color={Colors.outline} />
-                <Text style={{ marginTop: 8, color: Colors.onSurfaceVariant, fontSize: 13, fontWeight: '500' }}>
-                  No inspection logs compiled for this perimeter.
-                </Text>
-              </View>
-            ) : (
-              inspections.map((inspection, idx) => {
-                const isClear = inspection.status === 'ALL CLEAR';
-                return (
-                  <TouchableOpacity
-                    key={inspection.id}
-                    activeOpacity={0.7}
-                    onPress={() => navigation.navigate('InspectionDetail', { reportId: inspection.id })}
-                    style={[
-                      s.inspectionRow,
-                      idx > 0 && s.inspectionRowBorder
-                    ]}
-                  >
-                    <View style={s.inspectionLeft}>
-                      <Text style={s.inspectionDate}>{inspection.date}</Text>
-                      <Text style={s.inspectorName}>{inspection.inspectorName}</Text>
-                    </View>
-                    <View style={[
-                      s.inspectionStatusBadge,
-                      isClear ? s.inspectionStatusBadgeClear : s.inspectionStatusBadgeError
-                    ]}>
-                      <Text style={[
-                        s.inspectionStatusText,
-                        isClear ? s.inspectionStatusTextClear : s.inspectionStatusTextError
-                      ]}>
-                        {inspection.status}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </View>
         </View>
       </Animated.View>
     );
@@ -1175,72 +1127,80 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
         <StatusBar barStyle="light-content" backgroundColor="#002752" />
 
         {/* Top Navbar Skeleton */}
-        <View style={[s.topNavbar, { paddingTop: insets.top }]}>
-          <View style={s.brandHeader}>
-            <View style={s.brandLogoWrap}>
-              <View style={[s.brandLogo, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-              <Text style={s.brandText}>PIS</Text>
-            </View>
-            <View style={s.notificationBtn}>
-              <MaterialIcons name="notifications" size={22} color="rgba(255,255,255,0.5)" />
-            </View>
-          </View>
-          <View style={s.titleBar}>
-            <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={s.backButtonNavbar}>
+        <View style={[s.topNavbarSingle, { paddingTop: insets.top }]}>
+          <View style={s.titleBarSingle}>
+            <View style={[s.backButtonNavbar, { opacity: 0.5 }]}>
               <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={s.titleBarText}>Site Detail</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Skeleton width="60%" height={20} style={{ backgroundColor: 'rgba(255,255,255,0.25)' }} />
+            </View>
+            <View style={[s.moreButtonNavbar, { opacity: 0.5 }]}>
+              <MaterialIcons name="more-vert" size={24} color="#FFFFFF" />
+            </View>
           </View>
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContainer}>
           {/* Hero Section Skeleton */}
-          <View style={s.heroSection}>
-            <Skeleton width="60%" height={24} style={{ backgroundColor: 'rgba(255,255,255,0.25)', marginBottom: 8 }} />
-            <View style={[s.heroLocationContainer, { width: '80%' }]}>
-              <MaterialIcons name="location-on" size={16} color="rgba(255,255,255,0.6)" style={s.heroLocationIcon} />
-              <Skeleton width="90%" height={14} style={{ backgroundColor: 'rgba(255,255,255,0.2)' }} />
+          <View style={s.heroSectionContainer}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#e2e8f0' }]} />
+            <View style={s.heroOverlayContainer}>
+              <View style={s.geofenceBox}>
+                <Skeleton circle width={48} height={48} />
+              </View>
             </View>
           </View>
 
-          {/* Tab Switcher Skeleton */}
-          <View style={[s.tabSwitcherContainer, { paddingVertical: 12 }]}>
-            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16 }}>
-              <Skeleton width={120} height={36} borderRadius={18} />
-              <Skeleton width={130} height={36} borderRadius={18} />
-              <Skeleton width={100} height={36} borderRadius={18} />
+          {/* Overlapping Card Skeleton */}
+          <View style={[s.siteInfoCardContainer, { marginTop: -40 }]}>
+            <View style={s.siteInfoCard}>
+              <Skeleton width="50%" height={22} style={{ marginBottom: 10 }} />
+              <Skeleton width="30%" height={14} style={{ marginBottom: 15 }} />
+              <View style={s.divider} />
+              <View style={{ gap: 12 }}>
+                <Skeleton width="80%" height={16} />
+                <Skeleton width="60%" height={16} />
+                <Skeleton width="70%" height={16} />
+                <Skeleton width="50%" height={16} />
+              </View>
             </View>
           </View>
 
-          {/* Overview Metrics Cards Skeleton */}
-          <View style={{ paddingHorizontal: 16, gap: 16 }}>
-            <View style={s.metricsGrid}>
-              {Array.from({ length: 4 }).map((_, idx) => (
-                <View key={idx} style={s.metricCard}>
-                  <View style={[s.metricHeader, { gap: 6 }]}>
-                    <Skeleton circle width={24} height={24} />
-                    <Skeleton width="60%" height={12} />
-                  </View>
-                  <Skeleton width="40%" height={28} style={{ marginVertical: 10 }} />
-                  <Skeleton width="80%" height={12} />
-                </View>
-              ))}
+          {/* Shift Timings Skeleton */}
+          <View style={s.sectionHeaderContainer}>
+            <Skeleton width="40%" height={20} />
+          </View>
+          <View style={s.shiftCardsContainer}>
+            <View style={s.shiftCard}>
+              <Skeleton width="50%" height={14} style={{ marginBottom: 8 }} />
+              <Skeleton width="85%" height={18} />
             </View>
+            <View style={s.shiftCard}>
+              <Skeleton width="50%" height={14} style={{ marginBottom: 8 }} />
+              <Skeleton width="85%" height={18} />
+            </View>
+          </View>
 
-            {/* Status indicators */}
-            <View style={[s.statusIndicatorsSection, { marginTop: 8, gap: 12 }]}>
-              {Array.from({ length: 3 }).map((_, idx) => (
-                <View key={idx} style={[s.statusBar, { backgroundColor: Colors.surfaceContainer, height: 64, borderLeftWidth: 4, borderLeftColor: Colors.surfaceContainerHigh }]}>
-                  <View style={[s.statusBarLeft, { flex: 1, gap: 12 }]}>
-                    <Skeleton circle width={24} height={24} />
-                    <View style={{ flex: 1, gap: 6 }}>
-                      <Skeleton width="50%" height={16} />
-                      <Skeleton width="80%" height={12} />
-                    </View>
-                  </View>
-                  <Skeleton width={20} height={20} borderRadius={10} />
-                </View>
-              ))}
+          {/* Guards Section Skeleton */}
+          <View style={s.sectionHeaderWithAction}>
+            <Skeleton width="45%" height={20} />
+            <Skeleton width="30%" height={28} borderRadius={8} />
+          </View>
+          <View style={s.guardsListContainer}>
+            <View style={s.guardCardItem}>
+              <Skeleton circle width={40} height={40} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <Skeleton width="50%" height={16} />
+                <Skeleton width="30%" height={12} />
+              </View>
+            </View>
+            <View style={s.guardCardItem}>
+              <Skeleton circle width={40} height={40} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <Skeleton width="45%" height={16} />
+                <Skeleton width="25%" height={12} />
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -1253,23 +1213,8 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
       <StatusBar barStyle="light-content" backgroundColor="#002752" />
 
       {/* ═══ Top App Bar ═══ */}
-      <View style={[s.topNavbar, { paddingTop: insets.top }]}>
-        {/* Brand Header */}
-        <View style={s.brandHeader}>
-          <View style={s.brandLogoWrap}>
-            <Image
-              alt="PIS Logo"
-              style={s.brandLogo}
-              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw' }}
-            />
-            <Text style={s.brandText}>PIS</Text>
-          </View>
-          <TouchableOpacity style={s.notificationBtn} activeOpacity={0.7}>
-            <MaterialIcons name="notifications" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-        {/* Title Bar */}
-        <View style={s.titleBar}>
+      <View style={[s.topNavbarSingle, { paddingTop: insets.top }]}>
+        <View style={s.titleBarSingle}>
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => navigation.goBack()}
@@ -1277,76 +1222,398 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
           >
             <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={s.titleBarText}>Site Detail</Text>
+          <Text style={s.titleBarTextSingle} numberOfLines={1}>
+            {siteName}
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setShowMenu(!showMenu)}
+            style={s.moreButtonNavbar}
+          >
+            <MaterialIcons name="more-vert" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
       </View>
 
+      {/* Dropdown Options Menu */}
+      {showMenu && (
+        <View style={s.menuDropdown}>
+          <TouchableOpacity
+            style={s.menuDropdownItem}
+            activeOpacity={0.7}
+            onPress={() => {
+              setShowMenu(false);
+              setShowMetricsModal(true);
+            }}
+          >
+            <MaterialIcons name="bar-chart" size={20} color={Colors.primary} />
+            <Text style={s.menuDropdownItemText}>Detailed Metrics</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={s.menuDropdownItem}
+            activeOpacity={0.7}
+            onPress={() => {
+              setShowMenu(false);
+              setShowSettingsModal(true);
+            }}
+          >
+            <MaterialIcons name="settings" size={20} color={Colors.primary} />
+            <Text style={s.menuDropdownItemText}>Configure Site</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.scrollContainer}
+        contentContainerStyle={[s.scrollContainer, { paddingBottom: 120 }]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
         {/* Hero Section */}
-        <View style={s.heroSection}>
-          <Text style={s.heroSiteName}>{siteName}</Text>
-          <View style={s.heroLocationContainer}>
-            <MaterialIcons name="location-on" size={16} color="#FFFFFF" style={s.heroLocationIcon} />
-            <Text style={s.heroAddressText}>
-              {siteAddress}
-            </Text>
+        <View style={s.heroSectionContainer}>
+          <Image
+            source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAr-Xr9gbDx_jNDzBLjQvxPmKBcpj-fENsNzdp3K_rI0YyCGM-W_YUzS4Jz35WQvai9au2fj7KHL_QGZHyYuViv7OEK_y7hjp3aXUb4_YocjhVtxuITRsZVI-S5tVPhXhFaLIwWIaWknciHW_eYVXMmvTUykMsE87CTH9A2uVJGVE7esQpUMoTwSlmjMi0tcCoCwRgGhTBu8l4uNPbsAhcrUr2car_llnzo4MJ86RdQ_sWaEOXNZM6bt-hwD5XfiwK1KGL6T-UpNds' }}
+            style={s.heroImage}
+            resizeMode="cover"
+          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.15)' }]} />
+          
+          <View style={s.heroOverlayContainer}>
+            <Animated.View style={[s.geofenceBox, { transform: [{ scale: pulseAnim }], opacity: pulseOpacity }]}>
+              <MaterialIcons name="location-on" size={40} color={Colors.secondary} />
+            </Animated.View>
+          </View>
+
+          <View style={s.heroGeofenceBadge}>
+            <MaterialIcons name="gps-fixed" size={14} color={Colors.primary} />
+            <Text style={s.heroGeofenceBadgeText}>GEOFENCE: {geofenceRadius}M RADIUS</Text>
           </View>
         </View>
 
-        {/* Tab Switcher */}
-        <View style={s.tabSwitcherContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.tabSwitcherScroll}
-          >
-            {(['Profile', 'Guards', 'Inspections', 'Settings'] as const).map((tab) => {
-              const isActive = activeTab === tab;
-              let displayName: string = tab;
-              if (tab === 'Profile') displayName = 'Overview Metrics';
-              else if (tab === 'Guards') displayName = 'Workforce Roster';
+        {/* Site Info Card */}
+        <View style={s.siteInfoCardContainer}>
+          <View style={s.siteInfoCard}>
+            <View style={s.siteInfoCardHeader}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={s.siteInfoName}>{siteName}</Text>
+                <View style={s.clientRow}>
+                  <MaterialIcons name="work" size={14} color={Colors.primary} />
+                  <Text style={s.clientText} numberOfLines={1}>{clientName.toUpperCase()}</Text>
+                </View>
+              </View>
+              <View style={[s.statusBadge, siteStatus === 'active' ? s.statusBadgeActive : s.statusBadgeInactive]}>
+                <Text style={[s.statusBadgeText, siteStatus === 'active' ? s.statusBadgeTextActive : s.statusBadgeTextInactive]}>
+                  {siteStatus.toUpperCase()}
+                </Text>
+              </View>
+            </View>
 
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  onPress={() => setActiveTab(tab)}
-                  style={[s.tabSwitcherButton, isActive && s.tabSwitcherButtonActive]}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[s.tabSwitcherButtonText, isActive && s.tabSwitcherButtonTextActive]}>
-                    {displayName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+            <View style={s.divider} />
+
+            <View style={s.siteInfoGrid}>
+              <View style={s.infoDetailRow}>
+                <MaterialIcons name="location-on" size={20} color={Colors.primary} />
+                <Text style={s.infoDetailText}>{siteAddress}</Text>
+              </View>
+              
+              <View style={s.infoDetailRow}>
+                <MaterialIcons name="my-location" size={20} color={Colors.primary} />
+                <Text style={s.infoDetailText}>{geofenceRadius}m Geofence Active</Text>
+              </View>
+
+              <View style={s.infoDetailRow}>
+                <MaterialIcons name="person" size={20} color={Colors.primary} />
+                <Text style={s.infoDetailText}>{siteContact || 'Rajesh Sharma'}</Text>
+              </View>
+
+              <View style={s.infoDetailRow}>
+                <MaterialIcons name="phone" size={20} color={Colors.primary} />
+                <Text style={[s.infoDetailText, { color: Colors.primary, fontWeight: '600' }]}>{sitePhone || 'N/A'}</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {/* Tab contents */}
-        {activeTab === 'Profile' && renderProfileTab()}
-        {activeTab === 'Guards' && renderGuardsTab()}
-        {activeTab === 'Inspections' && renderInspectionsTab()}
-        {activeTab === 'Settings' && renderSettingsTab()}
+        {/* Shift Timings */}
+        <View style={s.sectionHeaderContainer}>
+          <Text style={s.sectionTitleText}>Shift Timings</Text>
+        </View>
 
-        {/* Bottom spacer */}
-        <View style={{ height: 100 }} />
+        <View style={s.shiftCardsContainer}>
+          <View style={s.shiftCard}>
+            <View style={s.shiftCardHeader}>
+              <MaterialIcons name="light-mode" size={20} color={Colors.primary} />
+              <Text style={s.shiftCardLabel}>DAY SHIFT</Text>
+            </View>
+            <Text style={s.shiftCardValue}>{dayShift}</Text>
+          </View>
+
+          <View style={s.shiftCard}>
+            <View style={s.shiftCardHeader}>
+              <MaterialIcons name="dark-mode" size={20} color={Colors.primary} />
+              <Text style={s.shiftCardLabel}>NIGHT SHIFT</Text>
+            </View>
+            <Text style={s.shiftCardValue}>{nightShift}</Text>
+          </View>
+        </View>
+
+        {/* Assigned Personnel */}
+        <View style={s.sectionHeaderWithAction}>
+          <Text style={s.sectionTitleText}>Assigned Personnel ({assignedPersonnel.length})</Text>
+          <TouchableOpacity
+            style={s.sectionActionBtn}
+            onPress={handleAssignPersonnel}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="add" size={14} color="#ffffff" />
+            <Text style={s.sectionActionBtnText}>Assign Personnel</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.guardsListContainer}>
+          {assignedPersonnel.length === 0 ? (
+            <View style={s.emptyGuardsContainer}>
+              <MaterialIcons name="group-off" size={32} color={Colors.outline} />
+              <Text style={s.emptyGuardsTextMini}>No personnel assigned to this site yet.</Text>
+            </View>
+          ) : (
+            assignedPersonnel.map((person) => (
+              <View key={person.id} style={s.guardCardItem}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handlePersonnelPress(person.id)}
+                  style={s.guardCardItemLeft}
+                >
+                  {person.avatar ? (
+                    <Image source={{ uri: person.avatar }} style={s.guardAvatarImage} />
+                  ) : (
+                    <View style={[s.guardAvatarFallbackMini, { backgroundColor: person.initialsColor }]}>
+                      <Text style={s.guardAvatarFallbackTextMini}>{person.initials}</Text>
+                    </View>
+                  )}
+                  <View style={s.guardInfoContainer}>
+                    <Text style={s.guardNameText}>{person.name}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600', marginBottom: 2 }}>
+                      {person.categoryName || 'Personnel'}
+                    </Text>
+                    <View style={s.guardMetaRowMini}>
+                      <View style={[s.shiftBadgeMini, person.shift === 'DAY' ? s.shiftBadgeMiniDay : s.shiftBadgeMiniNight]}>
+                        <Text style={[s.shiftBadgeMiniText, person.shift === 'DAY' ? s.shiftBadgeMiniTextDay : s.shiftBadgeMiniTextNight]}>
+                          {person.shift}
+                        </Text>
+                      </View>
+                      <View style={s.guardStatusDotRow}>
+                        <View style={[s.statusDotMini, { backgroundColor: person.status === 'On-Duty' ? Colors.successGreen : Colors.outline }]} />
+                        <Text style={s.guardStatusText}>{person.status.toUpperCase()}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+
+                <View style={s.guardActionsRow}>
+                  {person.assignmentId && (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => handleUnassignPersonnel(person.assignmentId!, person.name)}
+                      style={s.removeGuardBtn}
+                    >
+                      <MaterialIcons name="close" size={16} color={Colors.secondary} />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handlePersonnelPress(person.id)}
+                    style={s.chevronBtn}
+                  >
+                    <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Attendance Details */}
+        <View style={s.sectionHeaderContainer}>
+          <Text style={s.sectionTitleText}>Attendance Details</Text>
+        </View>
+
+        {/* Attendance Summary Cards */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 12 }}>
+          <View style={{ flex: 1, backgroundColor: '#f0fdf4', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#dcfce7' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <MaterialIcons name="check-circle" size={16} color="#16a34a" />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#15803d', textTransform: 'uppercase' }}>Present</Text>
+            </View>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#166534' }}>{attendanceStats.present.toString().padStart(2, '0')}</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: '#fef2f2', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#fee2e2' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <MaterialIcons name="cancel" size={16} color="#dc2626" />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#b91c1c', textTransform: 'uppercase' }}>Absent</Text>
+            </View>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#991b1b' }}>{attendanceStats.absent.toString().padStart(2, '0')}</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: '#fefce8', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#fef9c3' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <MaterialIcons name="schedule" size={16} color="#ca8a04" />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#a16207', textTransform: 'uppercase' }}>Pending</Text>
+            </View>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#854d0e' }}>{attendanceStats.notMarked.toString().padStart(2, '0')}</Text>
+          </View>
+        </View>
+
+        {/* Individual Attendance Records */}
+        <View style={s.inspectionsListContainer}>
+          <View style={s.inspectionsCardContainer}>
+            {attendanceRecords.length === 0 ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <MaterialIcons name="event-busy" size={36} color={Colors.outline} />
+                <Text style={{ marginTop: 8, color: Colors.onSurfaceVariant, fontSize: 13, fontWeight: '500' }}>
+                  No personnel assigned — attendance data unavailable.
+                </Text>
+              </View>
+            ) : (
+              attendanceRecords.map((record, idx) => {
+                const statusColor = record.status === 'present' ? '#16a34a' : record.status === 'absent' ? '#dc2626' : '#ca8a04';
+                const statusBgColor = record.status === 'present' ? '#f0fdf4' : record.status === 'absent' ? '#fef2f2' : '#fefce8';
+                const statusLabel = record.status === 'present' ? 'PRESENT' : record.status === 'absent' ? 'ABSENT' : 'NOT MARKED';
+                return (
+                  <View
+                    key={record.personnelId}
+                    style={[
+                      s.inspectionRowItem,
+                      idx > 0 && s.inspectionRowItemBorder
+                    ]}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={s.inspectionRowInspector}>{record.personnelName}</Text>
+                      <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600' }}>{record.categoryName || 'Personnel'}</Text>
+                      {record.checkInTime && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <MaterialIcons name="login" size={12} color={Colors.outline} />
+                          <Text style={{ fontSize: 11, color: Colors.onSurfaceVariant }}>In: {record.checkInTime}</Text>
+                          {record.checkOutTime && (
+                            <>
+                              <Text style={{ fontSize: 11, color: Colors.outlineVariant }}> • </Text>
+                              <MaterialIcons name="logout" size={12} color={Colors.outline} />
+                              <Text style={{ fontSize: 11, color: Colors.onSurfaceVariant }}>Out: {record.checkOutTime}</Text>
+                            </>
+                          )}
+                          {record.hoursWorked !== undefined && (
+                            <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600', marginLeft: 4 }}>
+                              ({record.hoursWorked}h)
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <View style={[
+                      s.inspectionRowStatusBadge,
+                      { backgroundColor: statusBgColor }
+                    ]}>
+                      <Text style={[
+                        s.inspectionRowStatusText,
+                        { color: statusColor }
+                      ]}>
+                        {statusLabel}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </View>
+
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={handleAssignGuard}
-        style={[s.fab, { bottom: 24 + insets.bottom }]}
+      {/* Edit Site Settings Fullscreen Modal */}
+      <Modal
+        visible={showSettingsModal}
+        animationType="slide"
+        onRequestClose={() => setShowSettingsModal(false)}
       >
-        <MaterialIcons name="add" size={30} color="#FFFFFF" />
-      </TouchableOpacity>
+        <View style={{ flex: 1, backgroundColor: Colors.surface }}>
+          {/* Modal Header */}
+          <View style={[s.topNavbarSingle, { paddingTop: insets.top }]}>
+            <View style={s.titleBarSingle}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setShowSettingsModal(false)}
+                style={s.backButtonNavbar}
+              >
+                <MaterialIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={s.titleBarTextSingle} numberOfLines={1}>Configure Site</Text>
+              <View style={{ width: 32 }} />
+            </View>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+            {renderSettingsTab()}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Detailed Overview Metrics Modal */}
+      <Modal
+        visible={showMetricsModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowMetricsModal(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.metricsModalContainer}>
+            <View style={s.metricsModalHeader}>
+              <Text style={s.metricsModalTitle}>Perimeter Overview Metrics</Text>
+              <TouchableOpacity onPress={() => setShowMetricsModal(false)} style={s.closeMetricsBtn}>
+                <MaterialIcons name="close" size={24} color={Colors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {renderProfileTab()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Bottom Floating Nav Bar */}
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
+        <TouchableOpacity
+          style={s.navItem}
+          onPress={() => navigation.navigate('AdminDashboard')}
+        >
+          <MaterialIcons name="dashboard" size={24} color={Colors.onSurfaceVariant} />
+          <Text style={s.navLabel}>Dashboard</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={s.navItem}
+          onPress={() => navigation.navigate('WorkforcePersonnelList')}
+        >
+          <MaterialIcons name="people" size={24} color={Colors.onSurfaceVariant} />
+          <Text style={s.navLabel}>Guards</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[s.navItem, s.navItemActive]}
+          onPress={() => navigation.navigate('SiteList')}
+        >
+          <MaterialIcons name="location-on" size={24} color="#ffffff" />
+          <Text style={[s.navLabel, s.navLabelActive]}>Sites</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={s.navItem}
+          onPress={() => navigation.navigate('MoreMenu')}
+        >
+          <MaterialIcons name="menu" size={24} color={Colors.onSurfaceVariant} />
+          <Text style={s.navLabel}>More</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -2418,5 +2685,472 @@ const styles = StyleSheet.create({
     color: Colors.onSurface,
     backgroundColor: 'transparent',
     flex: 1,
+  },
+  // Single navbar styles
+  topNavbarSingle: {
+    backgroundColor: '#002752',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    zIndex: 50,
+  },
+  titleBarSingle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: 56,
+  },
+  titleBarTextSingle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 12,
+  },
+  moreButtonNavbar: {
+    padding: 4,
+    borderRadius: BorderRadius.full,
+  },
+
+  // Options Menu dropdown
+  menuDropdown: {
+    position: 'absolute',
+    top: 56, // below title bar
+    right: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.5)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 5,
+    zIndex: 999,
+    paddingVertical: 4,
+    minWidth: 160,
+  },
+  menuDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  menuDropdownItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1c1f',
+  },
+
+  // Hero Section styles
+  heroSectionContainer: {
+    height: 220,
+    width: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroOverlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  geofenceBox: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 2,
+    borderColor: 'rgba(176, 45, 33, 0.4)',
+    backgroundColor: 'rgba(176, 45, 33, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroGeofenceBadge: {
+    position: 'absolute',
+    bottom: 48, // offset to avoid overlapping the card which is at -mt-10 (40px)
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+  },
+  heroGeofenceBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+
+  // Site Info Card styles
+  siteInfoCardContainer: {
+    paddingHorizontal: 16,
+    marginTop: -40,
+    zIndex: 10,
+  },
+  siteInfoCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.4)',
+    padding: 20,
+    shadowColor: 'rgba(26, 61, 109, 0.08)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  siteInfoCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  siteInfoName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.primary,
+    lineHeight: 28,
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  clientText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.5,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  statusBadgeActive: {
+    backgroundColor: '#E6F4EA',
+  },
+  statusBadgeInactive: {
+    backgroundColor: '#FCE8E6',
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  statusBadgeTextActive: {
+    color: '#1E7E34',
+  },
+  statusBadgeTextInactive: {
+    color: '#C5221F',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.surfaceContainer,
+    marginVertical: 16,
+  },
+  siteInfoGrid: {
+    gap: 12,
+  },
+  infoDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoDetailText: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.onSurfaceVariant,
+    lineHeight: 20,
+  },
+
+  // Shift Timings section styles
+  sectionHeaderContainer: {
+    paddingHorizontal: 16,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  sectionTitleText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  shiftCardsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  shiftCard: {
+    flex: 1,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.3)',
+    padding: 16,
+  },
+  shiftCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  shiftCardLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 0.5,
+  },
+  shiftCardValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.onSurface,
+  },
+
+  // Assigned Guards styles
+  sectionHeaderWithAction: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  sectionActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primaryContainer,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  sectionActionBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  guardsListContainer: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  guardCardItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.4)',
+    borderRadius: 16,
+    padding: 12,
+  },
+  guardCardItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  guardAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  guardAvatarFallbackMini: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guardAvatarFallbackTextMini: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  guardInfoContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  guardNameText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  guardMetaRowMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shiftBadgeMini: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  shiftBadgeMiniDay: {
+    backgroundColor: 'rgba(0, 39, 82, 0.08)',
+  },
+  shiftBadgeMiniNight: {
+    backgroundColor: 'rgba(26, 61, 109, 0.08)',
+  },
+  shiftBadgeMiniText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  shiftBadgeMiniTextDay: {
+    color: Colors.primary,
+  },
+  shiftBadgeMiniTextNight: {
+    color: Colors.primaryContainer,
+  },
+  guardStatusDotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statusDotMini: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  guardStatusText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.3,
+  },
+  guardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  removeGuardBtn: {
+    padding: 6,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: '#FEE2E2',
+  },
+  chevronBtn: {
+    padding: 4,
+  },
+  emptyGuardsContainer: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  emptyGuardsTextMini: {
+    fontSize: 13,
+    color: Colors.outline,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+
+  // Recent Inspections section styles
+  inspectionsListContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 40,
+  },
+  inspectionsCardContainer: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.4)',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  inspectionRowItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+  },
+  inspectionRowItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.outlineVariant,
+  },
+  inspectionRowLeft: {
+    gap: 2,
+  },
+  inspectionRowDate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.outline,
+  },
+  inspectionRowInspector: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  inspectionRowStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  inspectionRowStatusBadgeClear: {
+    backgroundColor: '#E6F4EA',
+  },
+  inspectionRowStatusBadgeError: {
+    backgroundColor: Colors.errorContainer,
+  },
+  inspectionRowStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  inspectionRowStatusTextClear: {
+    color: '#1E7E34',
+  },
+  inspectionRowStatusTextError: {
+    color: Colors.onErrorContainer,
+  },
+
+  // Modals styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  metricsModalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '75%',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  metricsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  metricsModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  closeMetricsBtn: {
+    padding: 4,
   },
 });

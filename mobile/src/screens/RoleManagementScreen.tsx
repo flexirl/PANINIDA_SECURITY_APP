@@ -14,6 +14,7 @@ import {
   Platform,
   LayoutAnimation,
   UIManager,
+  Switch,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,6 +23,8 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { useAuth } from '../hooks/useAuth';
 import * as roleAssignmentService from '../api/roleAssignmentService';
+import * as managerPermService from '../api/managerPermissionsService';
+import { supabase } from '../api/supabase';
 import type { RoleAssignment } from '../api/roleAssignmentService';
 
 // Enable LayoutAnimation on Android
@@ -83,6 +86,12 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
+  // Permissions modal state
+  const [isPermModalVisible, setIsPermModalVisible] = useState(false);
+  const [permAssignment, setPermAssignment] = useState<RoleAssignment | null>(null);
+  const [permToggles, setPermToggles] = useState<Record<string, boolean>>({});
+  const [isSavingPerms, setIsSavingPerms] = useState(false);
+
   // Animations
   const headerFade = useRef(new Animated.Value(0)).current;
   const cardsSlide = useRef(new Animated.Value(30)).current;
@@ -106,8 +115,18 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
   const loadAssignments = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await roleAssignmentService.getRoleAssignments();
-      setAssignments(data);
+      const { data, error } = await supabase
+        .from('role_assignments')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[RoleAssignment] Fetch failed:', error.message);
+        throw new Error('Failed to load role assignments');
+      }
+
+      setAssignments(data || []);
     } catch (err: any) {
       console.error('Failed to load role assignments:', err);
     } finally {
@@ -239,9 +258,65 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
     }
   };
 
+  // ─── Permissions Modal Handlers ────────────────────
+  const openPermissionsModal = (assignment: RoleAssignment) => {
+    setPermAssignment(assignment);
+    // Parse existing permissions or use defaults
+    const existing = (assignment as any).permissions;
+    if (existing && typeof existing === 'object') {
+      setPermToggles({ ...managerPermService.getDefaultPermissions(), ...existing });
+    } else {
+      setPermToggles(managerPermService.getDefaultPermissions());
+    }
+    setIsPermModalVisible(true);
+  };
+
+  const handleTogglePermission = (key: string) => {
+    setPermToggles((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSavePermissions = async () => {
+    if (!permAssignment) return;
+    setIsSavingPerms(true);
+    try {
+      await managerPermService.updateManagerPermissions(permAssignment.id, permToggles);
+      // Update local state so the UI reflects saved perms
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.id === permAssignment.id ? { ...a, permissions: permToggles } as any : a
+        )
+      );
+      setIsPermModalVisible(false);
+      Alert.alert('Saved', 'Manager access permissions updated successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to save permissions');
+    } finally {
+      setIsSavingPerms(false);
+    }
+  };
+
   const selectedRoleDef = roleAssignmentService.ASSIGNABLE_ROLES.find(
     (r) => r.role === selectedRole
   );
+
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') {
+    return (
+      <View style={[s.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#faf9fd" />
+        <MaterialIcons name="security" size={80} color="#BA1A1A" />
+        <Text style={{ fontSize: 22, fontWeight: '700', color: '#1A1C2B', marginTop: 16, marginBottom: 8 }}>Access Denied</Text>
+        <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22, paddingHorizontal: 20, marginBottom: 24 }}>
+          Role Management is restricted to Administrator roles only.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: '#4F46E5', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12 }}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={s.container}>
@@ -389,7 +464,7 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
                                     color={colors.accent}
                                   />
                                 </View>
-                                <View>
+                                <View style={{ flex: 1 }}>
                                   {assignment.label ? (
                                     <>
                                       <Text style={s.assignmentLabel}>
@@ -406,22 +481,38 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
                                   )}
                                 </View>
                               </View>
-                              <TouchableOpacity
-                                activeOpacity={0.7}
-                                style={s.removeBtn}
-                                onPress={() => handleRemoveAssignment(assignment)}
-                                disabled={isRemoving}
-                              >
-                                {isRemoving ? (
-                                  <ActivityIndicator size="small" color="#EF4444" />
-                                ) : (
-                                  <MaterialIcons
-                                    name="remove-circle-outline"
-                                    size={22}
-                                    color="#EF4444"
-                                  />
+                              <View style={s.assignmentActions}>
+                                {/* Configure Access button — only for managers */}
+                                {roleDef.role === 'manager' && (
+                                  <TouchableOpacity
+                                    activeOpacity={0.7}
+                                    style={s.configBtn}
+                                    onPress={() => openPermissionsModal(assignment)}
+                                  >
+                                    <MaterialIcons
+                                      name="tune"
+                                      size={20}
+                                      color={colors.accent}
+                                    />
+                                  </TouchableOpacity>
                                 )}
-                              </TouchableOpacity>
+                                <TouchableOpacity
+                                  activeOpacity={0.7}
+                                  style={s.removeBtn}
+                                  onPress={() => handleRemoveAssignment(assignment)}
+                                  disabled={isRemoving}
+                                >
+                                  {isRemoving ? (
+                                    <ActivityIndicator size="small" color="#EF4444" />
+                                  ) : (
+                                    <MaterialIcons
+                                      name="remove-circle-outline"
+                                      size={22}
+                                      color="#EF4444"
+                                    />
+                                  )}
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           );
                         })
@@ -578,6 +669,140 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
                 style={s.modalCancelBtn}
                 onPress={() => setIsModalVisible(false)}
                 disabled={isSubmitting}
+              >
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ═══ Permissions Configuration Modal ═══ */}
+      <Modal
+        visible={isPermModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => !isSavingPerms && setIsPermModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={s.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => !isSavingPerms && setIsPermModalVisible(false)}
+        >
+          <View style={s.permModalContent} onStartShouldSetResponder={() => true}>
+            {/* Header */}
+            <View style={s.modalHeader}>
+              <View style={s.modalDragHandle} />
+            </View>
+
+            <View style={s.permModalBody}>
+              {/* Title */}
+              <View style={s.permModalTitleRow}>
+                <View style={[s.permModalTitleIcon, { backgroundColor: ROLE_COLORS.manager.iconBg }]}>
+                  <MaterialIcons name="tune" size={22} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.permModalTitle}>Configure Access</Text>
+                  <Text style={s.permModalSubtitle}>
+                    {permAssignment?.label || `+91 ${permAssignment?.phone || ''}`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Info chip */}
+              <View style={s.permInfoChip}>
+                <MaterialIcons name="info-outline" size={16} color="#4F46E5" />
+                <Text style={s.permInfoText}>
+                  Toggle modules this manager can access. Dashboard is always available.
+                </Text>
+              </View>
+
+              {/* Module toggles */}
+              <ScrollView
+                style={s.permScrollView}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 8 }}
+              >
+                {managerPermService.TOGGLEABLE_MODULES.map((mod) => {
+                  const isOn = permToggles[mod.key] !== false;
+                  return (
+                    <View key={mod.key} style={s.permToggleRow}>
+                      <View style={[s.permModuleIcon, { backgroundColor: isOn ? '#EEF2FF' : '#F3F4F6' }]}>
+                        <MaterialIcons
+                          name={mod.icon as any}
+                          size={20}
+                          color={isOn ? '#4F46E5' : '#9CA3AF'}
+                        />
+                      </View>
+                      <View style={s.permModuleText}>
+                        <Text style={[s.permModuleLabel, !isOn && { color: '#9CA3AF' }]}>
+                          {mod.label}
+                        </Text>
+                        <Text style={s.permModuleDesc} numberOfLines={1}>
+                          {mod.description}
+                        </Text>
+                      </View>
+                      <Switch
+                        value={isOn}
+                        onValueChange={() => handleTogglePermission(mod.key)}
+                        trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
+                        thumbColor={isOn ? '#4F46E5' : '#D1D5DB'}
+                        ios_backgroundColor="#E5E7EB"
+                      />
+                    </View>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Quick actions */}
+              <View style={s.permQuickActions}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={s.permQuickBtn}
+                  onPress={() => {
+                    const allOn: Record<string, boolean> = {};
+                    managerPermService.TOGGLEABLE_MODULES.forEach((m) => { allOn[m.key] = true; });
+                    setPermToggles(allOn);
+                  }}
+                >
+                  <Text style={s.permQuickBtnText}>Enable All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={s.permQuickBtn}
+                  onPress={() => {
+                    const allOff: Record<string, boolean> = {};
+                    managerPermService.TOGGLEABLE_MODULES.forEach((m) => { allOff[m.key] = false; });
+                    setPermToggles(allOff);
+                  }}
+                >
+                  <Text style={s.permQuickBtnText}>Disable All</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Save button */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[s.permSaveBtn, isSavingPerms && { opacity: 0.7 }]}
+                onPress={handleSavePermissions}
+                disabled={isSavingPerms}
+              >
+                {isSavingPerms ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <MaterialIcons name="save" size={20} color="#FFFFFF" />
+                    <Text style={s.permSaveBtnText}>Save Permissions</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Cancel */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={s.modalCancelBtn}
+                onPress={() => setIsPermModalVisible(false)}
+                disabled={isSavingPerms}
               >
                 <Text style={s.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -977,5 +1202,140 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: Colors.onSurfaceVariant,
+  },
+
+  // ── Assignment Actions Row ──
+  assignmentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  configBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#EEF2FF',
+  },
+
+  // ═══ Permissions Modal ═══
+  permModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+  },
+  permModalBody: {
+    padding: 24,
+    paddingTop: 12,
+    gap: 16,
+  },
+  permModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  permModalTitleIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1C2B',
+  },
+  permModalSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  permInfoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  permInfoText: {
+    fontSize: 12,
+    color: '#4338CA',
+    flex: 1,
+    lineHeight: 17,
+  },
+  permScrollView: {
+    maxHeight: 320,
+  },
+  permToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 0.5,
+    borderColor: '#F0F0F5',
+    gap: 12,
+  },
+  permModuleIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permModuleText: {
+    flex: 1,
+    gap: 2,
+  },
+  permModuleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1C2B',
+  },
+  permModuleDesc: {
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  permQuickActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  permQuickBtn: {
+    flex: 1,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permQuickBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  permSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    borderRadius: 14,
+    gap: 8,
+    backgroundColor: '#4F46E5',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  permSaveBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

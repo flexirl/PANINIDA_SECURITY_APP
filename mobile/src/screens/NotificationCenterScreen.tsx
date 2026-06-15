@@ -243,7 +243,7 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
       </ScrollView>
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'more';
           return (

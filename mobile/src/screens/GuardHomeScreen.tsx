@@ -134,8 +134,8 @@ export default function GuardHomeScreen({ navigation }: { navigation: any }) {
   };
 
   const navItems = [
-    { key: 'home', icon: 'home' as const, label: 'Home' },
-    { key: 'attendance', icon: 'calendar-today' as const, label: 'Attendance' },
+    { key: 'home', icon: 'dashboard' as const, label: 'Home' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
     { key: 'salary', icon: 'payments' as const, label: 'Salary' },
     { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
@@ -291,8 +291,8 @@ export default function GuardHomeScreen({ navigation }: { navigation: any }) {
               </View>
             </View>
             <Text style={s.statMiniLabel}>EARNINGS</Text>
-            <Text style={s.statMiniValue}>
-              ₹{(user?.base_salary ? Math.round((user.base_salary / 22) * presentCount) : 0).toLocaleString('en-IN')}
+            <Text style={s.earningsText}>
+              Will be available at end of month
             </Text>
           </View>
         </View>
@@ -380,7 +380,7 @@ export default function GuardHomeScreen({ navigation }: { navigation: any }) {
       </ScrollView>
 
       {/* ═══ Bottom Navigation Bar ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'home';
           return (
@@ -583,6 +583,14 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceVariant,
     fontWeight: '500',
     fontFamily: 'Inter',
+  },
+  earningsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+    fontFamily: 'Inter',
+    marginTop: 6,
+    lineHeight: 16,
   },
   activitySection: {
     gap: 16,

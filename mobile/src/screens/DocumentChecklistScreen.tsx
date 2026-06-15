@@ -18,6 +18,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getPersonnelById } from '../api/workforcePersonnelService';
 import { getDocumentChecklist, verifyDocument } from '../api/workforceDocumentService';
+import CachedImage from '../components/CachedImage';
 import type { DocumentChecklistItem, WorkforcePersonnel } from '../types/workforce';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useAuth } from '../hooks/useAuth';
@@ -297,10 +298,15 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
           </View>
           <View style={s.imageContainer}>
             {viewerUrl ? (
-              <Image
-                source={{ uri: viewerUrl }}
+              <CachedImage
+                uri={viewerUrl}
                 style={s.viewerImage}
+                containerStyle={s.viewerImage}
                 resizeMode="contain"
+                fallbackIcon="broken-image"
+                fallbackIconSize={48}
+                fallbackIconColor="rgba(255,255,255,0.5)"
+                showRetry={true}
               />
             ) : null}
           </View>

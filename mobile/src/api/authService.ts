@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { UserRole } from '../types/workforce';
+import { getManagerPermissionsByPhone } from './managerPermissionsService';
 
 // ============================================================
 // All authentication goes through real Supabase backend
@@ -20,6 +21,7 @@ export interface UserProfile {
   base_salary?: number;
   current_assignment?: any;
   avatar_url?: string;
+  manager_permissions?: Record<string, boolean> | null;
 }
 
 export interface SessionData {
@@ -249,6 +251,18 @@ export async function fetchUserProfile(userId: string): Promise<UserProfile> {
           additionalData.current_assignment = assignment;
         }
       }
+    }
+  }
+
+  // If role is manager, fetch granular module permissions
+  if (user.role === 'manager') {
+    try {
+      const perms = await getManagerPermissionsByPhone(user.phone);
+      additionalData.manager_permissions = perms;
+    } catch (permErr) {
+      console.warn('[fetchUserProfile] Failed to fetch manager permissions:', permErr);
+      // Non-fatal — null means full access (backward-compatible)
+      additionalData.manager_permissions = null;
     }
   }
 

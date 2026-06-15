@@ -8,7 +8,9 @@
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION auto_create_replacement_on_absent()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+AS $$
 DECLARE
   v_attendance_required BOOLEAN;
   v_requester_id UUID;

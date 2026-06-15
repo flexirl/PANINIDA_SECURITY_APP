@@ -23,14 +23,14 @@ import type { WorkforcePersonnel, WorkforceDocument } from '../types/workforce';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const PERMITTED_DOC_TYPES = [
-  { type: 'aadhaar_front', name: 'Aadhaar Front' },
-  { type: 'aadhaar_back', name: 'Aadhaar Back' },
-  { type: 'pan', name: 'PAN Card' },
-  { type: 'police_verification', name: 'Police Verification' },
-  { type: 'security_training_certificate', name: 'Security Training Certificate' },
-  { type: 'weapon_training_certificate', name: 'Weapon Training Certificate' },
-  { type: 'gun_license', name: 'Gun License' },
-  { type: 'ex_servicemen_proof', name: 'Ex-Servicemen Proof' }
+  { type: 'aadhaar_front', name: 'Aadhaar Front / आधार फ्रंट' },
+  { type: 'aadhaar_back', name: 'Aadhaar Back / आधार बैक' },
+  { type: 'pan', name: 'PAN Card / पैन कार्ड' },
+  { type: 'police_verification', name: 'Police Verification / पुलिस सत्यापन' },
+  { type: 'security_training_certificate', name: 'Security Training Certificate / सुरक्षा प्रशिक्षण प्रमाण पत्र' },
+  { type: 'weapon_training_certificate', name: 'Weapon Training Certificate / हथियार प्रशिक्षण प्रमाण पत्र' },
+  { type: 'gun_license', name: 'Gun License / गन लाइसेंस' },
+  { type: 'ex_servicemen_proof', name: 'Ex-Servicemen Proof / पूर्व सैनिक प्रमाण' }
 ];
 
 export default function ClientDocumentViewScreen({ route, navigation }: any) {

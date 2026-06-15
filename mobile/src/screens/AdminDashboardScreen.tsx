@@ -26,6 +26,7 @@ import * as dashboardService from '../api/dashboardService';
 import * as attendanceService from '../api/attendanceService';
 import * as notificationService from '../api/notificationService';
 import { supabase } from '../api/supabase';
+import { hasModuleAccess } from '../api/managerPermissionsService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -142,8 +143,8 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       return filterIds.includes(categoryId);
     });
 
-    const present = filteredAttendance.filter((r: any) => r.status === 'present').length;
-    const late = filteredAttendance.filter((r: any) => r.status === 'late').length;
+    const present = filteredAttendance.filter((r: any) => r.status === 'present' || r.status === 'present_late').length;
+    const late = filteredAttendance.filter((r: any) => r.status === 'late' || r.status === 'present_late').length;
     const absent = filteredAttendance.filter((r: any) => r.status === 'absent').length;
 
     // Filter payroll by category
@@ -189,22 +190,26 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           console.warn('Notifications API failed', err);
           return [];
         }),
-        supabase
-          .from('workforce_personnel')
-          .select('id, category_id, employment_status')
-          .limit(1000)
+        Promise.resolve(
+          supabase
+            .from('workforce_personnel')
+            .select('id, category_id, employment_status')
+            .limit(1000)
+        )
           .then(res => res.data || [])
-          .catch(err => {
+          .catch((err: any) => {
             console.warn('Personnel cache fetch failed', err);
             return [] as any[];
           }),
-        supabase
-          .from('payroll')
-          .select('id, guards:workforce_personnel(category_id)')
-          .in('status', ['draft', 'generated'])
-          .limit(500)
+        Promise.resolve(
+          supabase
+            .from('payroll')
+            .select('id, guards:workforce_personnel(category_id)')
+            .in('status', ['draft', 'generated'])
+            .limit(500)
+        )
           .then(res => res.data || [])
-          .catch(err => {
+          .catch((err: any) => {
             console.warn('Payroll cache fetch failed', err);
             return [] as any[];
           }),
@@ -231,41 +236,11 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           })
         : allAttendanceRecords;
 
-      // Map attendance records to ActivityItem
-      const mappedActivities: ActivityItem[] = filteredAttendanceForActivity.map((record: any) => {
-        let timeStr = '';
-        if (record.check_in_time) {
-          try {
-            const timeObj = new Date(record.check_in_time);
-            timeStr = timeObj.toLocaleTimeString('en-IN', {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            });
-          } catch (e) {
-            timeStr = 'Just Now';
-          }
-        } else {
-          timeStr = 'Scheduled';
-        }
-
-        let badgeLabel = 'ON-TIME';
-        let badgeColor = '#27AE60';
-        let badgeBg = 'rgba(39, 174, 96, 0.08)';
-
-        if (record.status === 'late') {
-          badgeLabel = 'LATE';
-          badgeColor = Colors.secondary;
-          badgeBg = 'rgba(178, 43, 29, 0.08)';
-        } else if (record.status === 'absent') {
-          badgeLabel = 'ABSENT';
-          badgeColor = Colors.secondary;
-          badgeBg = 'rgba(178, 43, 29, 0.08)';
-        } else if (record.status === 'half_day') {
-          badgeLabel = 'HALF-DAY';
-          badgeColor = Colors.primaryContainer;
-          badgeBg = 'rgba(26, 61, 109, 0.08)';
-        }
+      // Map attendance records to ActivityItem (Check-ins and Check-outs)
+      const mappedActivities: ActivityItem[] = [];
+      
+      filteredAttendanceForActivity.forEach((record: any) => {
+        if (record.status === 'absent' && !record.check_in_time) return;
 
         const guardName = record.guards?.name || 'Unknown Guard';
         const nameParts = guardName.trim().split(' ');
@@ -274,36 +249,77 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           : nameParts[0].substring(0, 2).toUpperCase();
 
         const initialsColors = [
-          Colors.primaryContainer,
-          Colors.secondaryContainer,
-          '#2E7D32',
-          '#1565C0',
-          '#C62828',
-          '#6A1B9A',
+          Colors.primaryContainer, Colors.secondaryContainer, '#2E7D32', '#1565C0', '#C62828', '#6A1B9A',
         ];
         const charSum = initials.charCodeAt(0) + (initials.charCodeAt(1) || 0);
         const initialsColor = initialsColors[charSum % initialsColors.length];
+        
+        const siteName = record.sites?.site_name || 'Assigned Site';
 
-        return {
-          id: record.id,
-          name: guardName,
-          action: record.status === 'present'
-            ? `checked in at`
-            : record.status === 'late'
-              ? `marked late at`
-              : record.status === 'half_day'
-                ? `completed half day at`
-                : `marked absent for`,
-          site: record.sites?.site_name || 'Assigned Site',
-          time: timeStr,
-          avatar: record.check_in_selfie || undefined,
-          initials,
-          initialsColor,
-          badge: { label: badgeLabel, color: badgeColor, bg: badgeBg },
+        // Helper to format time
+        const formatTime = (t: string) => {
+          try {
+            return new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+          } catch (e) { return 'Just Now'; }
         };
-      });
 
-      setActivities(mappedActivities);
+        if (record.check_in_time) {
+          let badgeLabel = 'ON-TIME';
+          let badgeColor = '#27AE60';
+          let badgeBg = 'rgba(39, 174, 96, 0.08)';
+
+          if (record.status === 'late' || record.status === 'present_late') {
+            badgeLabel = 'LATE';
+            badgeColor = Colors.secondary;
+            badgeBg = 'rgba(178, 43, 29, 0.08)';
+          }
+
+          mappedActivities.push({
+            id: `${record.id}_in`,
+            name: guardName,
+            action: `checked in at`,
+            site: siteName,
+            time: formatTime(record.check_in_time),
+            rawTime: new Date(record.check_in_time).getTime(),
+            avatar: record.check_in_selfie || undefined,
+            initials,
+            initialsColor,
+            badge: { label: badgeLabel, color: badgeColor, bg: badgeBg },
+          } as any);
+        }
+
+        if (record.check_out_time) {
+          let badgeLabel = 'FULL DAY';
+          let badgeColor = '#27AE60';
+          let badgeBg = 'rgba(39, 174, 96, 0.08)';
+
+          if (record.status === 'half_day') {
+            badgeLabel = 'HALF-DAY';
+            badgeColor = Colors.primaryContainer;
+            badgeBg = 'rgba(26, 61, 109, 0.08)';
+          } else if (record.status === 'absent') {
+            badgeLabel = 'EARLY OUT';
+            badgeColor = Colors.secondary;
+            badgeBg = 'rgba(178, 43, 29, 0.08)';
+          }
+
+          mappedActivities.push({
+            id: `${record.id}_out`,
+            name: guardName,
+            action: `checked out from`,
+            site: siteName,
+            time: formatTime(record.check_out_time),
+            rawTime: new Date(record.check_out_time).getTime(),
+            avatar: record.check_out_selfie || undefined,
+            initials,
+            initialsColor,
+            badge: { label: badgeLabel, color: badgeColor, bg: badgeBg },
+          } as any);
+        }
+      });
+      
+      mappedActivities.sort((a: any, b: any) => b.rawTime - a.rawTime);
+      setActivities(mappedActivities.slice(0, 10));
     } catch (error) {
       console.error('Fatal error loading dashboard metrics:', error);
       Alert.alert('Load Failure', 'Could not refresh some real-time metrics. Swipe down to try again.');
@@ -340,40 +356,10 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
         : cachedAttendance;
       
       // Remap activities (reuse the mapping logic)
-      const mappedActivities: ActivityItem[] = filteredAttendanceForActivity.slice(0, 10).map((record: any) => {
-        let timeStr = '';
-        if (record.check_in_time) {
-          try {
-            const timeObj = new Date(record.check_in_time);
-            timeStr = timeObj.toLocaleTimeString('en-IN', {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            });
-          } catch (e) {
-            timeStr = 'Just Now';
-          }
-        } else {
-          timeStr = 'Scheduled';
-        }
-
-        let badgeLabel = 'ON-TIME';
-        let badgeColor = '#27AE60';
-        let badgeBg = 'rgba(39, 174, 96, 0.08)';
-
-        if (record.status === 'late') {
-          badgeLabel = 'LATE';
-          badgeColor = Colors.secondary;
-          badgeBg = 'rgba(178, 43, 29, 0.08)';
-        } else if (record.status === 'absent') {
-          badgeLabel = 'ABSENT';
-          badgeColor = Colors.secondary;
-          badgeBg = 'rgba(178, 43, 29, 0.08)';
-        } else if (record.status === 'half_day') {
-          badgeLabel = 'HALF-DAY';
-          badgeColor = Colors.primaryContainer;
-          badgeBg = 'rgba(26, 61, 109, 0.08)';
-        }
+      const mappedActivities: ActivityItem[] = [];
+      
+      filteredAttendanceForActivity.forEach((record: any) => {
+        if (record.status === 'absent') return;
 
         const guardName = record.guards?.name || 'Unknown Guard';
         const nameParts = guardName.trim().split(' ');
@@ -382,36 +368,73 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           : nameParts[0].substring(0, 2).toUpperCase();
 
         const initialsColors = [
-          Colors.primaryContainer,
-          Colors.secondaryContainer,
-          '#2E7D32',
-          '#1565C0',
-          '#C62828',
-          '#6A1B9A',
+          Colors.primaryContainer, Colors.secondaryContainer, '#2E7D32', '#1565C0', '#C62828', '#6A1B9A',
         ];
         const charSum = initials.charCodeAt(0) + (initials.charCodeAt(1) || 0);
         const initialsColor = initialsColors[charSum % initialsColors.length];
+        
+        const siteName = record.sites?.site_name || 'Assigned Site';
 
-        return {
-          id: record.id,
-          name: guardName,
-          action: record.status === 'present'
-            ? `checked in at`
-            : record.status === 'late'
-              ? `marked late at`
-              : record.status === 'half_day'
-                ? `completed half day at`
-                : `marked absent for`,
-          site: record.sites?.site_name || 'Assigned Site',
-          time: timeStr,
-          avatar: record.check_in_selfie || undefined,
-          initials,
-          initialsColor,
-          badge: { label: badgeLabel, color: badgeColor, bg: badgeBg },
+        // Helper to format time
+        const formatTime = (t: string) => {
+          try {
+            return new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+          } catch (e) { return 'Just Now'; }
         };
+
+        if (record.check_in_time) {
+          let badgeLabel = 'ON-TIME';
+          let badgeColor = '#27AE60';
+          let badgeBg = 'rgba(39, 174, 96, 0.08)';
+
+          if (record.status === 'late' || record.status === 'present_late') {
+            badgeLabel = 'LATE';
+            badgeColor = Colors.secondary;
+            badgeBg = 'rgba(178, 43, 29, 0.08)';
+          }
+
+          mappedActivities.push({
+            id: `${record.id}_in`,
+            name: guardName,
+            action: `checked in at`,
+            site: siteName,
+            time: formatTime(record.check_in_time),
+            rawTime: new Date(record.check_in_time).getTime(),
+            avatar: record.check_in_selfie || undefined,
+            initials,
+            initialsColor,
+            badge: { label: badgeLabel, color: badgeColor, bg: badgeBg },
+          } as any);
+        }
+
+        if (record.check_out_time) {
+          let badgeLabel = 'FULL DAY';
+          let badgeColor = '#27AE60';
+          let badgeBg = 'rgba(39, 174, 96, 0.08)';
+
+          if (record.status === 'half_day') {
+            badgeLabel = 'HALF-DAY';
+            badgeColor = Colors.primaryContainer;
+            badgeBg = 'rgba(26, 61, 109, 0.08)';
+          }
+
+          mappedActivities.push({
+            id: `${record.id}_out`,
+            name: guardName,
+            action: `checked out from`,
+            site: siteName,
+            time: formatTime(record.check_out_time),
+            rawTime: new Date(record.check_out_time).getTime(),
+            avatar: record.check_out_selfie || undefined,
+            initials,
+            initialsColor,
+            badge: { label: badgeLabel, color: badgeColor, bg: badgeBg },
+          } as any);
+        }
       });
       
-      setActivities(mappedActivities);
+      mappedActivities.sort((a: any, b: any) => b.rawTime - a.rawTime);
+      setActivities(mappedActivities.slice(0, 10));
       
       const endTime = performance.now();
       const recalcTime = endTime - startTime;
@@ -450,20 +473,22 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
   }, []);
 
   const statsList: StatCard[] = useMemo(() => {
-    return [
+    const baseStats = [
       {
         id: 'guards',
         icon: 'people',
         value: overview ? overview.guards.total : 0,
         label: selectedCategory === 'all' ? 'Total Workforce' : `Total ${getLabel('plural')}`,
-        trend: { direction: 'up', value: '+4%' },
+        trend: { direction: 'up' as 'up' | 'down', value: '+4%' },
+        permKey: 'workforce',
       },
       {
         id: 'sites',
         icon: 'location-city',
         value: overview ? overview.sites.total : 0,
         label: 'Active Sites',
-        trend: { direction: 'up', value: 'Stable' },
+        trend: { direction: 'up' as 'up' | 'down', value: 'Stable' },
+        permKey: 'sites',
       },
       {
         id: 'attendance',
@@ -471,6 +496,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
         value: overview ? String(overview.today.present) : '0',
         subValue: overview ? `/${overview.guards.total}` : '/0',
         label: 'Present Today',
+        permKey: 'workforce',
       },
       {
         id: 'payroll',
@@ -478,9 +504,18 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
         value: overview ? overview.payroll.pending : 0,
         label: 'Pending Payroll',
         highlight: true,
+        permKey: 'payroll',
       },
     ];
-  }, [overview, selectedCategory, getLabel]);
+
+    if (user?.role === 'manager') {
+      return baseStats.filter((stat) => {
+        if (!stat.permKey) return true;
+        return hasModuleAccess(user.manager_permissions, stat.permKey);
+      });
+    }
+    return baseStats;
+  }, [overview, selectedCategory, getLabel, user?.role, user?.manager_permissions]);
 
   const alertsList: AlertBanner[] = useMemo(() => {
     const list: AlertBanner[] = [];
@@ -491,7 +526,8 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           type: 'error',
           icon: 'error',
           message: `${overview.today.absent} ${getLabel('singular').toLowerCase()}${overview.today.absent > 1 ? (selectedCategory === 'gunmen' ? ' personnel' : 's') : ''} absent today`,
-        });
+          permKey: 'workforce',
+        } as any);
       }
       if (overview.payroll.pending > 0) {
         list.push({
@@ -499,20 +535,29 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           type: 'warning',
           icon: 'warning',
           message: `${overview.payroll.pending} payroll approval${overview.payroll.pending > 1 ? 's' : ''} pending`,
-        });
+          permKey: 'payroll',
+        } as any);
       }
     }
+
+    const filteredList = user?.role === 'manager'
+      ? list.filter((alert: any) => {
+          if (!alert.permKey) return true;
+          return hasModuleAccess(user.manager_permissions, alert.permKey);
+        })
+      : list;
+
     // Fallback if everything is 100% fine or overview is loading
-    if (list.length === 0) {
-      list.push({
+    if (filteredList.length === 0) {
+      filteredList.push({
         id: 'all-secure',
         type: 'info',
         icon: 'check-circle',
         message: 'All sites fully staffed & secure today!',
       });
     }
-    return list;
-  }, [overview, getLabel, selectedCategory]);
+    return filteredList;
+  }, [overview, getLabel, selectedCategory, user?.role, user?.manager_permissions]);
 
   const attendanceData = {
     present: baseOverview ? baseOverview.today.present : 0,
@@ -525,12 +570,67 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
   const latePct = (attendanceData.late / attendanceTotal) * 100;
   const absentPct = (attendanceData.absent / attendanceTotal) * 100;
 
-  const navItems = useMemo(() => [
-    { key: 'dashboard', icon: 'dashboard' as const, label: 'Dashboard' },
-    { key: 'workforce', icon: 'people' as const, label: getLabel('plural') },
-    { key: 'sites', icon: 'location-on' as const, label: 'Sites' },
-    { key: 'more', icon: 'menu' as const, label: 'More' },
-  ], [getLabel]);
+  const navItems = useMemo(() => {
+    const items = [
+      { key: 'dashboard', icon: 'dashboard' as const, label: 'Dashboard' },
+      { key: 'workforce', icon: 'people' as const, label: getLabel('plural'), permKey: 'workforce' },
+      { key: 'sites', icon: 'location-on' as const, label: 'Sites', permKey: 'sites' },
+      { key: 'more', icon: 'menu' as const, label: 'More' },
+    ];
+    if (user?.role === 'manager') {
+      return items.filter((item) => {
+        if (!item.permKey) return true;
+        return hasModuleAccess(user.manager_permissions, item.permKey);
+      });
+    }
+    return items;
+  }, [getLabel, user?.role, user?.manager_permissions]);
+
+  const managementButtons = useMemo(() => {
+    const btns = [
+      {
+        key: 'onboard',
+        label: getLabel('onboard'),
+        icon: 'person-add' as const,
+        navigateTo: 'AddWorkforcePersonnel',
+        params: {},
+        isOutline: false,
+        permKey: 'workforce',
+      },
+      {
+        key: 'register_site',
+        label: 'Register Site',
+        icon: 'domain-add' as const,
+        navigateTo: 'AddSite',
+        params: {},
+        isOutline: false,
+        permKey: 'sites',
+      },
+      {
+        key: 'assign_site',
+        label: getLabel('assign') + " to Site",
+        icon: 'assignment-ind' as const,
+        navigateTo: 'AssignPersonnel',
+        params: {},
+        isOutline: false,
+        permKey: 'sites',
+      },
+      {
+        key: 'categories',
+        label: 'Workforce Categories',
+        icon: 'category' as const,
+        navigateTo: 'WorkforceCategoryList',
+        params: {},
+        isOutline: true,
+        permKey: 'categories',
+      },
+    ];
+
+    if (user?.role === 'manager') {
+      return btns.filter((btn) => hasModuleAccess(user.manager_permissions, btn.permKey));
+    }
+    return btns;
+  }, [getLabel, user?.role, user?.manager_permissions]);
 
   if (loading && !refreshing) {
     return (
@@ -567,14 +667,16 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
               <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
               <View style={s.notifBadgeRedDot} />
             </TouchableOpacity>
-            {/* Settings button */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={s.topBarIconBtn}
-              onPress={() => navigation.navigate('Settings')}
-            >
-              <MaterialIcons name="settings" size={24} color={Colors.onSurfaceVariant} />
-            </TouchableOpacity>
+             {/* Settings button */}
+            {user?.role !== 'manager' && (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={s.topBarIconBtn}
+                onPress={() => navigation.navigate('Settings')}
+              >
+                <MaterialIcons name="settings" size={24} color={Colors.onSurfaceVariant} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -611,8 +713,8 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
         </Animated.View>
 
         {/* ─── Category Switcher ─── */}
-        {/* Hide category switcher for client users */}
-        {user?.role !== 'client_user' && (
+        {/* Hide category switcher for client users and managers without workforce access */}
+        {user?.role !== 'client_user' && (user?.role !== 'manager' || hasModuleAccess(user.manager_permissions, 'workforce')) && (
           <View style={s.categorySwitcherContainer}>
             <ScrollView
               horizontal
@@ -624,7 +726,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
                 { id: 'guards', label: 'Guards' },
                 { id: 'gunmen', label: 'Gunman Personnel' },
                 { id: 'bouncers', label: 'Bouncers' },
-                { id: 'helpers', label: 'Helpers / Housekeeping' }
+                { id: 'helpers', label: 'Helpers' }
               ].map((cat) => {
                 const active = selectedCategory === cat.id;
                 return (
@@ -683,7 +785,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
                 } else if (stat.id === 'sites') {
                   navigation.navigate('SiteList');
                 } else if (stat.id === 'attendance') {
-                  navigation.navigate('WorkforcePersonnelList');
+                  navigation.navigate('RealTimeAttendance');
                 } else if (stat.id === 'payroll') {
                   navigation.navigate('PayrollList');
                 }
@@ -693,295 +795,269 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
         </View>
 
         {/* ─── Attendance Overview ─── */}
-        <View style={s.sectionCard}>
-          <View style={s.sectionCardHeader}>
-            <Text style={s.sectionTitle}>Attendance Overview</Text>
-            <Text style={s.dateLabel}>{dateStr}</Text>
-          </View>
-
-          {/* Bar */}
-          <View style={s.attendanceBar}>
-            {presentPct > 0 && (
-              <View
-                style={[
-                  s.attendanceSegment,
-                  {
-                    width: `${presentPct}%`,
-                    backgroundColor: Colors.primary,
-                    borderTopLeftRadius: 8,
-                    borderBottomLeftRadius: 8,
-                    borderTopRightRadius: (latePct === 0 && absentPct === 0) ? 8 : 0,
-                    borderBottomRightRadius: (latePct === 0 && absentPct === 0) ? 8 : 0,
-                  },
-                ]}
-              />
-            )}
-            {latePct > 0 && (
-              <View
-                style={[
-                  s.attendanceSegment,
-                  {
-                    width: `${latePct}%`,
-                    backgroundColor: Colors.secondaryContainer,
-                    borderTopLeftRadius: presentPct === 0 ? 8 : 0,
-                    borderBottomLeftRadius: presentPct === 0 ? 8 : 0,
-                    borderTopRightRadius: absentPct === 0 ? 8 : 0,
-                    borderBottomRightRadius: absentPct === 0 ? 8 : 0,
-                  },
-                ]}
-              />
-            )}
-            {absentPct > 0 && (
-              <View
-                style={[
-                  s.attendanceSegment,
-                  {
-                    width: `${absentPct}%`,
-                    backgroundColor: 'rgba(186, 26, 26, 0.4)',
-                    borderTopRightRadius: 8,
-                    borderBottomRightRadius: 8,
-                    borderTopLeftRadius: (presentPct === 0 && latePct === 0) ? 8 : 0,
-                    borderBottomLeftRadius: (presentPct === 0 && latePct === 0) ? 8 : 0,
-                  },
-                ]}
-              />
-            )}
-          </View>
-
-          {/* Legend Grid */}
-          <View style={s.legendGrid}>
-            <View style={s.legendColumn}>
-              <Text style={s.legendColLabel}>Present</Text>
-              <View style={s.legendValueRow}>
-                <View style={[s.legendDot, { backgroundColor: Colors.primary }]} />
-                <Text style={s.legendValueText}>{attendanceData.present}</Text>
-              </View>
-              <Text style={s.legendColSub}>Personnel</Text>
+        {(user?.role !== 'manager' || hasModuleAccess(user.manager_permissions, 'workforce')) && (
+          <View style={s.sectionCard}>
+            <View style={s.sectionCardHeader}>
+              <Text style={s.sectionTitle}>Attendance Overview</Text>
+              <Text style={s.dateLabel}>{dateStr}</Text>
             </View>
 
-            <View style={s.legendColumn}>
-              <Text style={s.legendColLabel}>Late</Text>
-              <View style={s.legendValueRow}>
-                <View style={[s.legendDot, { backgroundColor: Colors.secondaryContainer }]} />
-                <Text style={s.legendValueText}>{attendanceData.late}</Text>
-              </View>
-              <Text style={s.legendColSub}>Personnel</Text>
+            {/* Bar */}
+            <View style={s.attendanceBar}>
+              {presentPct > 0 && (
+                <View
+                  style={[
+                    s.attendanceSegment,
+                    {
+                      width: `${presentPct}%`,
+                      backgroundColor: Colors.primary,
+                      borderTopLeftRadius: 8,
+                      borderBottomLeftRadius: 8,
+                      borderTopRightRadius: (latePct === 0 && absentPct === 0) ? 8 : 0,
+                      borderBottomRightRadius: (latePct === 0 && absentPct === 0) ? 8 : 0,
+                    },
+                  ]}
+                />
+              )}
+              {latePct > 0 && (
+                <View
+                  style={[
+                    s.attendanceSegment,
+                    {
+                      width: `${latePct}%`,
+                      backgroundColor: Colors.secondaryContainer,
+                      borderTopLeftRadius: presentPct === 0 ? 8 : 0,
+                      borderBottomLeftRadius: presentPct === 0 ? 8 : 0,
+                      borderTopRightRadius: absentPct === 0 ? 8 : 0,
+                      borderBottomRightRadius: absentPct === 0 ? 8 : 0,
+                    },
+                  ]}
+                />
+              )}
+              {absentPct > 0 && (
+                <View
+                  style={[
+                    s.attendanceSegment,
+                    {
+                      width: `${absentPct}%`,
+                      backgroundColor: 'rgba(186, 26, 26, 0.4)',
+                      borderTopRightRadius: 8,
+                      borderBottomRightRadius: 8,
+                      borderTopLeftRadius: (presentPct === 0 && latePct === 0) ? 8 : 0,
+                      borderBottomLeftRadius: (presentPct === 0 && latePct === 0) ? 8 : 0,
+                    },
+                  ]}
+                />
+              )}
             </View>
 
-            <View style={s.legendColumn}>
-              <Text style={s.legendColLabel}>Absent</Text>
-              <View style={s.legendValueRow}>
-                <View style={[s.legendDot, { backgroundColor: '#FCA5A5' }]} />
-                <Text style={s.legendValueText}>{attendanceData.absent}</Text>
+            {/* Legend Grid */}
+            <View style={s.legendGrid}>
+              <View style={s.legendColumn}>
+                <Text style={s.legendColLabel}>Present</Text>
+                <View style={s.legendValueRow}>
+                  <View style={[s.legendDot, { backgroundColor: Colors.primary }]} />
+                  <Text style={s.legendValueText}>{attendanceData.present}</Text>
+                </View>
+                <Text style={s.legendColSub}>Personnel</Text>
               </View>
-              <Text style={s.legendColSub}>Personnel</Text>
+
+              <View style={s.legendColumn}>
+                <Text style={s.legendColLabel}>Late</Text>
+                <View style={s.legendValueRow}>
+                  <View style={[s.legendDot, { backgroundColor: Colors.secondaryContainer }]} />
+                  <Text style={s.legendValueText}>{attendanceData.late}</Text>
+                </View>
+                <Text style={s.legendColSub}>Personnel</Text>
+              </View>
+
+              <View style={s.legendColumn}>
+                <Text style={s.legendColLabel}>Absent</Text>
+                <View style={s.legendValueRow}>
+                  <View style={[s.legendDot, { backgroundColor: '#FCA5A5' }]} />
+                  <Text style={s.legendValueText}>{attendanceData.absent}</Text>
+                </View>
+                <Text style={s.legendColSub}>Personnel</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* ─── Management Section ─── */}
-        <View style={s.managementSection}>
-          <Text style={s.sectionTitle}>Management</Text>
-          <View style={s.managementCard}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AddWorkforcePersonnel')}
-              style={s.managementBtn}
-            >
-              <View style={s.managementIconWrapper}>
-                <MaterialIcons name="person-add" size={20} color="#FFFFFF" />
-              </View>
-              <Text style={s.managementBtnText}>{getLabel('onboard')}</Text>
-              <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.4)" style={{ marginLeft: 'auto' }} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AddSite')}
-              style={s.managementBtn}
-            >
-              <View style={s.managementIconWrapper}>
-                <MaterialIcons name="domain-add" size={20} color="#FFFFFF" />
-              </View>
-              <Text style={s.managementBtnText}>Register Site</Text>
-              <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.4)" style={{ marginLeft: 'auto' }} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AssignPersonnel', {})}
-              style={s.managementBtn}
-            >
-              <View style={s.managementIconWrapper}>
-                <MaterialIcons name="assignment-ind" size={20} color="#FFFFFF" />
-              </View>
-              <Text style={s.managementBtnText}>{getLabel('assign') + " to Site"}</Text>
-              <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.4)" style={{ marginLeft: 'auto' }} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('WorkforceCategoryList')}
-              style={[s.managementBtn, s.managementBtnOutline]}
-            >
-              <View style={s.managementIconWrapperOutline}>
-                <MaterialIcons name="category" size={20} color="rgba(255,255,255,0.7)" />
-              </View>
-              <Text style={s.managementBtnTextOutline}>Workforce Categories</Text>
-              <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.3)" style={{ marginLeft: 'auto' }} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AnalyticsDashboard')}
-              style={[s.managementBtn, s.managementBtnOutline]}
-            >
-              <View style={s.managementIconWrapperOutline}>
-                <MaterialIcons name="analytics" size={20} color="rgba(255,255,255,0.7)" />
-              </View>
-              <Text style={s.managementBtnTextOutline}>Analytics Dashboard</Text>
-              <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.3)" style={{ marginLeft: 'auto' }} />
-            </TouchableOpacity>
+        {managementButtons.length > 0 && (
+          <View style={s.managementSection}>
+            <Text style={s.sectionTitle}>Management</Text>
+            <View style={s.managementCard}>
+              {managementButtons.map((btn) => (
+                <TouchableOpacity
+                  key={btn.key}
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate(btn.navigateTo, btn.params || {})}
+                  style={[s.managementBtn, btn.isOutline && s.managementBtnOutline]}
+                >
+                  <View style={btn.isOutline ? s.managementIconWrapperOutline : s.managementIconWrapper}>
+                    <MaterialIcons
+                      name={btn.icon as any}
+                      size={20}
+                      color={btn.isOutline ? "rgba(255,255,255,0.7)" : "#FFFFFF"}
+                    />
+                  </View>
+                  <Text style={btn.isOutline ? s.managementBtnTextOutline : s.managementBtnText}>
+                    {btn.label}
+                  </Text>
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={20}
+                    color={btn.isOutline ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.4)"}
+                    style={{ marginLeft: 'auto' }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ─── Live Activity Feed ─── */}
-        <View style={s.activitySection}>
-          <View style={s.activityHeader}>
-            <Text style={s.sectionTitle}>Live Activity</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('WorkforcePersonnelList')}>
-              <Text style={s.viewAllText}>View Log</Text>
-            </TouchableOpacity>
-          </View>
+        {(user?.role !== 'manager' || hasModuleAccess(user.manager_permissions, 'workforce')) && (
+          <View style={s.activitySection}>
+            <View style={s.activityHeader}>
+              <Text style={s.sectionTitle}>Live Activity</Text>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('RealTimeAttendance')}>
+                <Text style={s.viewAllText}>View Log</Text>
+              </TouchableOpacity>
+            </View>
 
-          <View style={s.activityList}>
-            {activities.length === 0 ? (
-              <View style={{ padding: 24, alignItems: 'center' }}>
-                <MaterialIcons name="event-busy" size={40} color={Colors.outline} />
-                <Text style={{ marginTop: 8, color: Colors.onSurfaceVariant, fontSize: 13, fontWeight: '500' }}>
-                  No check-ins logged for today yet.
-                </Text>
-              </View>
-            ) : (
-              activities.slice(0, 3).map((item, index) => (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.7}
-                  style={[
-                    s.activityItem,
-                    index < Math.min(activities.length, 3) - 1 && s.activityItemBorder,
-                  ]}
-                >
-                  {/* Avatar */}
-                  {item.avatar ? (
-                    <Image source={{ uri: item.avatar }} style={s.activityAvatar} />
-                  ) : (
-                    <View
-                      style={[
-                        s.activityInitials,
-                        { backgroundColor: item.initialsColor || Colors.primaryContainer },
-                      ]}
-                    >
-                      <Text style={s.activityInitialsText}>
-                        {item.initials}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Content */}
-                  <View style={s.activityContent}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={s.activityText}>
-                          <Text style={s.activityNameBold}>{item.name}</Text>
-                          <Text style={s.activityActionText}> {item.action} </Text>
-                          <Text style={s.activitySiteBold}>{item.site}</Text>
-                        </Text>
-                      </View>
-                      <Text style={s.activityTime}>{item.time}</Text>
-                    </View>
-
-                    {/* Badge */}
-                    <View
-                      style={[
-                        s.activityBadge,
-                        { backgroundColor: item.badge.bg },
-                      ]}
-                    >
+            <View style={s.activityList}>
+              {activities.length === 0 ? (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <MaterialIcons name="event-busy" size={40} color={Colors.outline} />
+                  <Text style={{ marginTop: 8, color: Colors.onSurfaceVariant, fontSize: 13, fontWeight: '500' }}>
+                    No check-ins logged for today yet.
+                  </Text>
+                </View>
+              ) : (
+                activities.slice(0, 3).map((item, index) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    activeOpacity={0.7}
+                    style={[
+                      s.activityItem,
+                      index < Math.min(activities.length, 3) - 1 && s.activityItemBorder,
+                    ]}
+                  >
+                    {/* Avatar */}
+                    {item.avatar ? (
+                      <Image source={{ uri: item.avatar }} style={s.activityAvatar} />
+                    ) : (
                       <View
                         style={[
-                          s.badgeDot,
-                          { backgroundColor: item.badge.color },
+                          s.activityInitials,
+                          { backgroundColor: item.initialsColor || Colors.primaryContainer },
                         ]}
-                      />
-                      <Text
-                        style={[s.activityBadgeText, { color: item.badge.color }]}
                       >
-                        {item.badge.label}
-                      </Text>
+                        <Text style={s.activityInitialsText}>
+                          {item.initials}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Content */}
+                    <View style={s.activityContent}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <Text style={s.activityText}>
+                            <Text style={s.activityNameBold}>{item.name}</Text>
+                            <Text style={s.activityActionText}> {item.action} </Text>
+                            <Text style={s.activitySiteBold}>{item.site}</Text>
+                          </Text>
+                        </View>
+                        <Text style={s.activityTime}>{item.time}</Text>
+                      </View>
+
+                      {/* Badge */}
+                      <View
+                        style={[
+                          s.activityBadge,
+                          { backgroundColor: item.badge.bg },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            s.badgeDot,
+                            { backgroundColor: item.badge.color },
+                          ]}
+                        />
+                        <Text
+                          style={[s.activityBadgeText, { color: item.badge.color }]}
+                        >
+                          {item.badge.label}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ─── Priority Site Card ─── */}
-        <View style={s.prioritySiteCard}>
-          <View style={s.priorityImageContainer}>
-            <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80',
-              }}
-              style={s.priorityImage}
-            />
-            <View style={s.priorityBadge}>
-              <Text style={s.priorityBadgeText}>CRITICAL PRIORITY</Text>
+        {(user?.role !== 'manager' || hasModuleAccess(user.manager_permissions, 'sites')) && (
+          <View style={s.prioritySiteCard}>
+            <View style={s.priorityImageContainer}>
+              <Image
+                source={{
+                  uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80',
+                }}
+                style={s.priorityImage}
+              />
+              <View style={s.priorityBadge}>
+                <Text style={s.priorityBadgeText}>CRITICAL PRIORITY</Text>
+              </View>
+            </View>
+
+            <View style={s.priorityBody}>
+              <Text style={s.priorityName}>Cyber City HQ</Text>
+              <View style={s.locationRow}>
+                <MaterialIcons name="location-on" size={16} color={Colors.onSurfaceVariant} />
+                <Text style={s.locationText}>Sector 24, Gurugram</Text>
+              </View>
+
+              <View style={s.priorityStats}>
+                <View style={s.priorityStatRow}>
+                  <Text style={s.priorityStatLabel}>{getLabel('singular')} Strength</Text>
+                  <Text style={s.priorityStatValue}>12 / 12</Text>
+                </View>
+                <View style={s.priorityProgressTrack}>
+                  <View style={[s.priorityProgressFill, { width: '100%' }]} />
+                </View>
+              </View>
+
+              <View style={s.incidentBox}>
+                <View style={s.incidentLeft}>
+                  <MaterialIcons name="security" size={18} color={Colors.secondary} />
+                  <Text style={s.incidentLabel}>Last Incident</Text>
+                </View>
+                <Text style={s.incidentValue}>None (14 Days)</Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={s.priorityButton}
+                onPress={() => navigation.navigate('SiteList')}
+              >
+                <Text style={s.priorityButtonText}>Manage Site</Text>
+              </TouchableOpacity>
             </View>
           </View>
-
-          <View style={s.priorityBody}>
-            <Text style={s.priorityName}>Cyber City HQ</Text>
-            <View style={s.locationRow}>
-              <MaterialIcons name="location-on" size={16} color={Colors.onSurfaceVariant} />
-              <Text style={s.locationText}>Sector 24, Gurugram</Text>
-            </View>
-
-            <View style={s.priorityStats}>
-              <View style={s.priorityStatRow}>
-                <Text style={s.priorityStatLabel}>{getLabel('singular')} Strength</Text>
-                <Text style={s.priorityStatValue}>12 / 12</Text>
-              </View>
-              <View style={s.priorityProgressTrack}>
-                <View style={[s.priorityProgressFill, { width: '100%' }]} />
-              </View>
-            </View>
-
-            <View style={s.incidentBox}>
-              <View style={s.incidentLeft}>
-                <MaterialIcons name="security" size={18} color={Colors.secondary} />
-                <Text style={s.incidentLabel}>Last Incident</Text>
-              </View>
-              <Text style={s.incidentValue}>None (14 Days)</Text>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={s.priorityButton}
-              onPress={() => navigation.navigate('SiteList')}
-            >
-              <Text style={s.priorityButtonText}>Manage Site</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        )}
 
         {/* Bottom spacer for nav bar + FAB */}
         <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* ═══ Bottom Nav Bar (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = activeTab === item.key;
           return (

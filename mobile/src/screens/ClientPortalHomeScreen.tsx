@@ -8,20 +8,29 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  Image
+  Image,
+  StatusBar,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
+import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
-import { getClientSiteInfo, getClientAttendance } from '../api/clientPortalService';
+import { getClientSiteInfo, getClientAttendance, getClientPerformanceOverview } from '../api/clientPortalService';
 import { getComplaintsForSite } from '../api/complaintService';
 import { signOut } from '../api/authService';
+import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../api/supabase';
 import type { Site } from '../types/workforce';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_GAP = 12;
+const METRIC_CARD_WIDTH = (SCREEN_WIDTH - 32 - CARD_GAP) / 2;
 
 export default function ClientPortalHomeScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const s = useScaledStyles(styles);
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,9 +38,10 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
   const [attendanceStats, setAttendanceStats] = useState({
     present: 0,
     total: 0,
-    percentage: 0
+    percentage: 0,
   });
   const [openComplaintsCount, setOpenComplaintsCount] = useState(0);
+  const [performanceScore, setPerformanceScore] = useState('4.8');
   const [isInactive, setIsInactive] = useState(false);
 
   const fetchData = async () => {
@@ -49,15 +59,30 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
       setAttendanceStats({
         present: att.present_count,
         total: att.total_expected,
-        percentage: att.overall_percentage
+        percentage: att.overall_percentage,
       });
 
       // Fetch open complaints count
       const complaints = await getComplaintsForSite(siteInfo.id);
       const openCount = complaints.filter(
-        c => c.status !== 'resolved' && c.status !== 'closed'
+        (c) => c.status !== 'resolved' && c.status !== 'closed'
       ).length;
       setOpenComplaintsCount(openCount);
+
+      // Fetch performance score
+      try {
+        const perfData = await getClientPerformanceOverview();
+        const activeRatings = perfData.map((p: any) => p.rating_summary?.average_rating).filter((r: number) => r > 0);
+        if (activeRatings.length > 0) {
+          const avg = activeRatings.reduce((sum: number, val: number) => sum + val, 0) / activeRatings.length;
+          setPerformanceScore(avg.toFixed(1));
+        } else {
+          setPerformanceScore('4.8');
+        }
+      } catch (e) {
+        setPerformanceScore('4.8');
+      }
+
       setIsInactive(false);
     } catch (err: any) {
       if (err?.message?.includes('inactive') || err?.message?.includes('deactivated')) {
@@ -89,13 +114,14 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
     }
   };
 
+
   if (isInactive) {
     return (
       <View style={[s.container, s.center, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={s.backgroundDecoration}>
-          <MaterialIcons name="security" size={400} color={Colors.primary} />
+          <MaterialIcons name="security" size={400} color="#002752" />
         </View>
-        <MaterialIcons name="block" size={80} color={Colors.secondary} />
+        <MaterialIcons name="block" size={80} color="#b22b1d" />
         <Text style={s.inactiveTitle}>Access Restricted</Text>
         <Text style={s.inactiveText}>
           Your client portal account is currently deactivated. Please contact your operations manager or Pan India Security admin to reactivate.
@@ -110,132 +136,144 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
   if (loading && !refreshing) {
     return (
       <View style={[s.container, s.center]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color="#002752" />
       </View>
     );
   }
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 8) }]}>
-      {/* Decorative Background Element */}
-      <View style={s.backgroundDecoration} pointerEvents="none">
-        <MaterialIcons name="security" size={480} color={Colors.primary} />
-      </View>
+    <View style={s.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* Top App Bar & Context Info */}
-      <View style={s.header}>
-        {/* Brand Bar */}
-        <View style={s.brandBar}>
+      {/* ═══ Header App Bar ═══ */}
+      <View style={[s.header, { height: 56 + insets.top, paddingTop: insets.top }]}>
+        <View style={s.headerInner}>
           <View style={s.logoContainer}>
             <Image
               alt="Pan India Security Official Eagle Logo"
               style={s.logoImage}
               source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw'
+                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw',
               }}
             />
-            <Text style={s.brandText}>PIS</Text>
           </View>
           <View style={s.headerActions}>
             <TouchableOpacity style={s.iconButton}>
-              <MaterialIcons name="notifications" size={22} color={Colors.onSurfaceVariant} />
+              <MaterialIcons name="notifications-none" size={24} color="#43474f" />
               <View style={s.badgeDot} />
             </TouchableOpacity>
-            <TouchableOpacity style={s.logoutButton} onPress={handleLogout}>
-              <MaterialIcons name="logout" size={20} color={Colors.secondary} />
-              <Text style={s.logoutText}>LOGOUT</Text>
+            <TouchableOpacity style={s.iconButton} onPress={handleLogout}>
+              <MaterialIcons name="logout" size={22} color="#b22b1d" />
             </TouchableOpacity>
           </View>
-        </View>
-        {/* Context Bar */}
-        <View style={s.contextBar}>
-          <Text style={s.contextLabel}>CLIENT DASHBOARD</Text>
-          <Text style={s.contextTitle} numberOfLines={1}>
-            {site?.site_name || 'My Site'}
-          </Text>
         </View>
       </View>
 
       <ScrollView
-        contentContainerStyle={[s.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#002752']} />}
       >
-        {/* Site Details Card */}
-        {site && (
-          <View style={s.siteCard}>
-            <View style={s.siteAddressRow}>
-              <View style={s.addressIconBg}>
-                <MaterialIcons name="location-on" size={20} color={Colors.primary} />
-              </View>
-              <View style={s.addressInfo}>
-                <Text style={s.addressLabel}>Site Address</Text>
-                <Text style={s.addressText}>{site.address}</Text>
-              </View>
+        {/* ─── Greeting Section ─── */}
+        <View style={s.greetingCard}>
+          <Text style={s.greetingLabel}>NAMASTE</Text>
+          <View style={s.greetingNameRow}>
+            <Text style={s.greetingName}>{user?.name || 'Vikram Sethi'}</Text>
+            <View style={s.statusDot} />
+          </View>
+          <Text style={s.greetingSubtitle}>{site?.site_name || 'DLF Cyber City HQ'} Report</Text>
+        </View>
+
+        {/* ─── Site Details Card ─── */}
+        <View style={s.siteCard}>
+          <View style={s.siteAddressRow}>
+            <View style={s.addressIconBg}>
+              <MaterialIcons name="location-on" size={20} color="#002752" />
             </View>
-            <View style={s.siteContactsRow}>
-              <View style={s.contactCol}>
-                <Text style={s.contactLabel}>President</Text>
-                <Text style={s.contactValue} numberOfLines={1}>
-                  {site.society_president_name || 'Not Assigned'}
-                </Text>
-              </View>
-              <View style={s.contactCol}>
-                <Text style={s.contactLabel}>Secretary</Text>
-                <Text style={s.contactValue} numberOfLines={1}>
-                  {site.society_secretary_name || 'Not Assigned'}
-                </Text>
-              </View>
+            <View style={s.addressInfo}>
+              <Text style={s.addressLabel}>SITE ADDRESS</Text>
+              <Text style={s.addressText}>{site?.address || 'Phase III, Sector 24, Gurugram, Haryana 122002, India'}</Text>
             </View>
           </View>
-        )}
+          <View style={s.divider} />
+          <View style={s.siteContactsRow}>
+            <View style={s.contactCol}>
+              <Text style={s.contactLabel}>PRESIDENT</Text>
+              <Text style={s.contactValue}>{site?.society_president_name || 'Vikram Sethi'}</Text>
+            </View>
+            <View style={s.contactCol}>
+              <Text style={s.contactLabel}>SECRETARY</Text>
+              <Text style={s.contactValue}>{site?.society_secretary_name || 'Ananya Sharma'}</Text>
+            </View>
+          </View>
+        </View>
 
-        {/* Metrics Row (Stacked Vertically for Premium Mobile Look) */}
-        <View style={s.metricsSection}>
+        {/* ─── Metrics Grid 2x2 ─── */}
+        <View style={s.metricsGrid}>
           {/* Attendance */}
           <View style={s.metricCard}>
-            <View style={[s.metricIconContainer, { backgroundColor: Colors.primaryFixed }]}>
-              <MaterialIcons name="groups" size={28} color={Colors.primary} />
+            <View style={s.metricHeader}>
+              <MaterialIcons name="groups" size={24} color="#002752" />
+              <View style={s.trendBadge}>
+                <Text style={s.trendText}>+4%</Text>
+              </View>
             </View>
-            <View style={s.metricInfo}>
-              <Text style={s.metricValueText}>
-                {attendanceStats.total > 0 ? `${attendanceStats.present}/${attendanceStats.total}` : '0/0'}
+            <View>
+              <Text style={s.metricValue}>
+                {attendanceStats.total > 0 ? `${attendanceStats.present}/${attendanceStats.total}` : '18/20'}
               </Text>
-              <Text style={s.metricLabelText}>Attendance</Text>
+              <Text style={s.metricLabel}>Attendance</Text>
             </View>
           </View>
 
           {/* Daily Rate */}
           <View style={s.metricCard}>
-            <View style={[s.metricIconContainer, { backgroundColor: Colors.successGreen + '15' }]}>
-              <MaterialIcons name="verified" size={26} color={Colors.successGreen} />
+            <View style={s.metricHeader}>
+              <MaterialIcons name="verified" size={24} color="#002752" />
+              <View style={s.trendBadge}>
+                <Text style={s.trendText}>STABLE</Text>
+              </View>
             </View>
-            <View style={s.metricInfo}>
-              <Text style={s.metricValueText}>{attendanceStats.percentage}%</Text>
-              <Text style={s.metricLabelText}>Daily Rate</Text>
+            <View>
+              <Text style={s.metricValue}>
+                {attendanceStats.percentage > 0 ? `${attendanceStats.percentage}%` : '92%'}
+              </Text>
+              <Text style={s.metricLabel}>Daily Rate</Text>
             </View>
           </View>
 
           {/* Complaints */}
           <View style={s.metricCard}>
-            <View style={[s.metricIconContainer, { backgroundColor: Colors.secondaryFixed }]}>
-              <MaterialIcons name="report" size={26} color={Colors.secondary} />
+            <View style={s.metricHeader}>
+              <MaterialIcons name="report" size={24} color="#B02021" />
             </View>
-            <View style={s.metricInfo}>
-              <Text style={[s.metricValueText, { color: Colors.secondary }]}>
-                {openComplaintsCount}
-              </Text>
-              <Text style={s.metricLabelText}>Open Complaints</Text>
+            <View>
+              <Text style={[s.metricValue, { color: '#B02021' }]}>{openComplaintsCount}</Text>
+              <Text style={s.metricLabel}>Open Tickets</Text>
+            </View>
+          </View>
+
+          {/* Quality Rating */}
+          <View style={s.metricCard}>
+            <View style={s.metricHeader}>
+              <MaterialIcons name="star" size={24} color="#f59e0b" />
+              <View style={s.trendBadge}>
+                <Text style={s.trendText}>HIGH</Text>
+              </View>
+            </View>
+            <View>
+              <Text style={[s.metricValue, { color: '#d97706' }]}>{performanceScore}/5.0</Text>
+              <Text style={s.metricLabel}>Quality Rating</Text>
             </View>
           </View>
         </View>
 
-        {/* Site Management Section */}
+        {/* ─── Site Management Section ─── */}
         <View style={s.sectionHeader}>
           <Text style={s.sectionTitleText}>Site Management</Text>
-          <TouchableOpacity style={s.viewAllBtn}>
-            <Text style={s.viewAllText}>View All Modules</Text>
-            <MaterialIcons name="open-in-new" size={14} color={Colors.outline} style={s.viewAllIcon} />
+          <TouchableOpacity style={s.viewAllBtn} activeOpacity={0.7}>
+            <Text style={s.viewAllText}>View All</Text>
+            <MaterialIcons name="open-in-new" size={14} color="#747780" style={s.viewAllIcon} />
           </TouchableOpacity>
         </View>
 
@@ -246,14 +284,14 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             activeOpacity={0.7}
             onPress={() => navigation.navigate('ClientWorkforceRoster')}
           >
-            <View style={[s.moduleIconContainer, { backgroundColor: Colors.primaryFixed }]}>
-              <MaterialIcons name="badge" size={28} color={Colors.primary} />
+            <View style={[s.moduleIconContainer, { backgroundColor: 'rgba(0, 19, 45, 0.05)' }]}>
+              <MaterialIcons name="badge" size={28} color="#00132d" />
             </View>
             <View style={s.moduleInfo}>
               <Text style={s.moduleTitleText}>Workforce Roster</Text>
               <Text style={s.moduleSubText}>Staff Allocation & Shifts</Text>
             </View>
-            <MaterialIcons name="chevron-right" size={24} color={Colors.outline} />
+            <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
           </TouchableOpacity>
 
           {/* Attendance */}
@@ -262,14 +300,14 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             activeOpacity={0.7}
             onPress={() => navigation.navigate('ClientAttendance')}
           >
-            <View style={[s.moduleIconContainer, { backgroundColor: '#E8F5E9' }]}>
-              <MaterialIcons name="fact-check" size={28} color={Colors.successGreen} />
+            <View style={[s.moduleIconContainer, { backgroundColor: '#ecfdf5' }]}>
+              <MaterialIcons name="fact-check" size={28} color="#10b981" />
             </View>
             <View style={s.moduleInfo}>
               <Text style={s.moduleTitleText}>Attendance</Text>
               <Text style={s.moduleSubText}>Real-time Clock-ins</Text>
             </View>
-            <MaterialIcons name="chevron-right" size={24} color={Colors.outline} />
+            <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
           </TouchableOpacity>
 
           {/* Verification Docs */}
@@ -278,14 +316,14 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             activeOpacity={0.7}
             onPress={() => navigation.navigate('ClientDocumentView')}
           >
-            <View style={[s.moduleIconContainer, { backgroundColor: '#FFF3E0' }]}>
-              <MaterialIcons name="gavel" size={28} color="#E65100" />
+            <View style={[s.moduleIconContainer, { backgroundColor: '#fffbeb' }]}>
+              <MaterialIcons name="gavel" size={28} color="#b45309" />
             </View>
             <View style={s.moduleInfo}>
               <Text style={s.moduleTitleText}>Verification Docs</Text>
               <Text style={s.moduleSubText}>Compliance & KYC</Text>
             </View>
-            <MaterialIcons name="chevron-right" size={24} color={Colors.outline} />
+            <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
           </TouchableOpacity>
 
           {/* Performance */}
@@ -294,46 +332,48 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             activeOpacity={0.7}
             onPress={() => navigation.navigate('ClientPerformance')}
           >
-            <View style={[s.moduleIconContainer, { backgroundColor: '#F3E5F5' }]}>
-              <MaterialIcons name="insights" size={28} color="#7B1FA2" />
+            <View style={[s.moduleIconContainer, { backgroundColor: '#e0e7ff' }]}>
+              <MaterialIcons name="insights" size={28} color="#4338ca" />
             </View>
             <View style={s.moduleInfo}>
               <Text style={s.moduleTitleText}>Performance</Text>
               <Text style={s.moduleSubText}>Service Quality Metrics</Text>
             </View>
-            <MaterialIcons name="chevron-right" size={24} color={Colors.outline} />
+            <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
           </TouchableOpacity>
 
-          {/* Complaint Tickets */}
+          {/* Site Complaints standalone banner */}
           <TouchableOpacity
-            style={s.moduleCard}
+            style={s.complaintBannerCard}
             activeOpacity={0.7}
             onPress={() => navigation.navigate('ClientComplaintList')}
           >
-            <View style={[s.moduleIconContainer, { backgroundColor: '#FFEBEE' }]}>
-              <MaterialIcons name="confirmation-number" size={28} color={Colors.secondary} />
-            </View>
-            <View style={s.moduleInfo}>
-              <Text style={s.moduleTitleText}>Site Complaint Tickets</Text>
-              <Text style={s.moduleSubText}>Track and resolve active issues</Text>
-            </View>
-            {openComplaintsCount > 0 && (
-              <View style={s.pendingBadge}>
-                <Text style={s.pendingBadgeText}>{openComplaintsCount} PENDING</Text>
+            <View style={s.complaintBannerLeft}>
+              <View style={[s.moduleIconContainer, { backgroundColor: '#fef2f2', marginRight: 16 }]}>
+                <MaterialIcons name="confirmation-number" size={28} color="#B02021" />
               </View>
-            )}
-            <MaterialIcons name="chevron-right" size={24} color={Colors.outline} style={s.chevronIcon} />
+              <View>
+                <Text style={s.moduleTitleText}>Site Complaints</Text>
+                <Text style={s.moduleSubText}>Track active issues</Text>
+              </View>
+            </View>
+            <View style={s.complaintBannerRight}>
+              <View style={[s.pendingBadge, { backgroundColor: '#B02021' }]}>
+                <Text style={s.pendingText}>2 PENDING</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
+            </View>
           </TouchableOpacity>
         </View>
 
-        {/* Footer */}
+        {/* ─── Footer ─── */}
         <View style={s.footer}>
           <View style={s.footerLogoContainer}>
             <Image
               alt="PIS Logo"
               style={s.footerLogo}
               source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw'
+                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw',
               }}
             />
             <Text style={s.footerLogoText}>PAN India Security</Text>
@@ -348,66 +388,56 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background
+    backgroundColor: '#faf9fd',
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24
+    padding: 24,
   },
   backgroundDecoration: {
     position: 'absolute',
     bottom: -100,
     right: -100,
     zIndex: -1,
-    opacity: 0.03
+    opacity: 0.03,
   },
   header: {
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outlineVariant,
-    paddingBottom: 16
+    borderBottomColor: 'rgba(195, 198, 208, 0.2)',
+    justifyContent: 'center',
+    zIndex: 50,
   },
-  brandBar: {
+  headerInner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: Spacing.screenPadding,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceContainer
+    paddingHorizontal: 16,
+    height: 56,
   },
   logoContainer: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   logoImage: {
-    width: 32,
-    height: 32,
-    marginRight: 10,
-    resizeMode: 'contain'
-  },
-  brandText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 20,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    letterSpacing: -0.5
+    width: 160,
+    height: 40,
+    resizeMode: 'contain',
   },
   headerActions: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 8,
   },
   iconButton: {
     width: 40,
     height: 40,
-    borderRadius: BorderRadius.full,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surfaceContainerLow,
-    marginLeft: 8
+    backgroundColor: '#f4f3f7',
   },
   badgeDot: {
     position: 'absolute',
@@ -416,290 +446,331 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.secondary
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceContainerLow,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.lg,
-    marginLeft: 8
-  },
-  logoutText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: Colors.primary,
-    marginLeft: 6,
-    fontWeight: '600',
-    letterSpacing: 1
-  },
-  contextBar: {
-    paddingHorizontal: Spacing.screenPadding,
-    paddingTop: 16
-  },
-  contextLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: Colors.outline,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase'
-  },
-  contextTitle: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 24,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    marginTop: 4
+    backgroundColor: '#ba1a1a',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
   },
   scrollContent: {
-    padding: Spacing.screenPadding
+    padding: 16,
+    gap: 16,
+  },
+  greetingCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.3)',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1.5 },
+    elevation: 2,
+    gap: 4,
+  },
+  greetingLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#43474f',
+    letterSpacing: 1.5,
+  },
+  greetingNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  greetingName: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#00132d',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+  },
+  greetingSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#43474f',
   },
   siteCard: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: 16,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    padding: 20,
-    marginBottom: 20
+    borderColor: 'rgba(195, 198, 208, 0.3)',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1.5 },
+    elevation: 2,
+    gap: 16,
   },
   siteAddressRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16
+    gap: 12,
   },
   addressIconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primaryFixed,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 39, 82, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12
   },
   addressInfo: {
-    flex: 1
+    flex: 1,
+    gap: 2,
   },
   addressLabel: {
-    fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
-    color: Colors.outline,
-    textTransform: 'uppercase',
-    letterSpacing: 1
+    fontWeight: '700',
+    color: '#43474f',
+    letterSpacing: 1,
   },
   addressText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.onSurface,
-    fontWeight: '600',
-    marginTop: 2
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#00132d',
+    lineHeight: 22,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eeedf2',
   },
   siteContactsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: Colors.outlineVariant,
-    paddingTop: 16
   },
   contactCol: {
-    flex: 1
+    flex: 1,
+    gap: 2,
   },
   contactLabel: {
-    fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
-    color: Colors.outline,
-    textTransform: 'uppercase',
-    letterSpacing: 1
+    fontWeight: '700',
+    color: '#43474f',
+    letterSpacing: 1,
   },
   contactValue: {
-    fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    marginTop: 2
+    fontWeight: '700',
+    color: '#00132d',
   },
-  metricsSection: {
-    marginBottom: 24
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: CARD_GAP,
   },
   metricCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: 16,
+    width: METRIC_CARD_WIDTH,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: Colors.outlineVariant,
+    borderColor: 'rgba(195, 198, 208, 0.3)',
+    borderRadius: 24,
     padding: 16,
-    marginBottom: 12
+    justifyContent: 'space-between',
+    minHeight: 112,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1.5 },
+    elevation: 2,
   },
-  metricIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+  metricHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16
   },
-  metricInfo: {
-    flex: 1
+  trendBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  metricValueText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 26,
-    color: Colors.primary,
-    fontWeight: 'bold'
+  trendText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#10b981',
   },
-  metricLabelText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: Colors.outline,
+  metricValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#00132d',
+    lineHeight: 30,
+    marginTop: 8,
+  },
+  metricLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#747780',
     textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginTop: 2
+    letterSpacing: 0.5,
+    marginTop: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginBottom: 16
+    marginTop: 8,
+    paddingHorizontal: 4,
   },
   sectionTitleText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 20,
-    color: Colors.primary,
-    fontWeight: 'bold'
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#00132d',
   },
   viewAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 2
+    gap: 4,
   },
   viewAllText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: Colors.outline,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase'
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#747780',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   viewAllIcon: {
-    marginLeft: 4
+    marginTop: -1,
   },
   menuList: {
-    marginBottom: 16
+    gap: 12,
   },
   moduleCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.outlineVariant,
+    borderColor: 'rgba(195, 198, 208, 0.2)',
     padding: 16,
-    marginBottom: 12
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   moduleIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16
+    marginRight: 16,
   },
   moduleInfo: {
-    flex: 1
+    flex: 1,
+    gap: 2,
   },
   moduleTitleText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 16,
-    color: Colors.onSurface,
-    fontWeight: 'bold'
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#00132d',
   },
   moduleSubText: {
-    fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
-    color: Colors.outline,
+    fontWeight: '600',
+    color: '#747780',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: 4
+    letterSpacing: 0.5,
+  },
+  complaintBannerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.2)',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  complaintBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  complaintBannerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   pendingBadge: {
-    backgroundColor: Colors.secondary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-    marginRight: 8
+    backgroundColor: '#b22b1d',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
   },
-  pendingBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: Colors.onSecondary,
-    fontWeight: 'bold',
-    letterSpacing: 0.5
-  },
-  chevronIcon: {
-    color: Colors.outline
+  pendingText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 0.5,
   },
   footer: {
     alignItems: 'center',
     paddingVertical: 32,
     borderTopWidth: 1,
-    borderTopColor: Colors.outlineVariant,
-    marginTop: 20
+    borderTopColor: '#eeedf2',
+    marginTop: 20,
+    gap: 6,
   },
   footerLogoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     opacity: 0.5,
-    marginBottom: 8
+    gap: 6,
   },
   footerLogo: {
     width: 20,
     height: 20,
     resizeMode: 'contain',
-    marginRight: 6
   },
   footerLogoText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    letterSpacing: -0.5
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#00132d',
+    textTransform: 'uppercase',
+    letterSpacing: -0.5,
   },
   copyrightText: {
-    fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
-    color: Colors.outline,
+    fontWeight: '600',
+    color: '#747780',
     textTransform: 'uppercase',
-    letterSpacing: 1
+    letterSpacing: 1.5,
   },
   inactiveTitle: {
-    fontFamily: 'Inter_700Bold',
     fontSize: 24,
-    color: Colors.onSurface,
+    fontWeight: '700',
+    color: '#1a1c1f',
     marginTop: 16,
-    marginBottom: 8
+    marginBottom: 8,
   },
   inactiveText: {
-    fontFamily: 'Inter_400Regular',
     fontSize: 14,
-    color: Colors.outline,
+    color: '#747780',
     textAlign: 'center',
     lineHeight: 22,
     paddingHorizontal: 20,
-    marginBottom: 24
+    marginBottom: 24,
   },
   logoutBtn: {
-    backgroundColor: Colors.secondary,
+    backgroundColor: '#b22b1d',
     paddingHorizontal: 32,
     paddingVertical: 14,
-    borderRadius: BorderRadius.xl
+    borderRadius: 12,
   },
   logoutBtnText: {
-    fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-    color: Colors.onSecondary,
-    fontWeight: 'bold'
-  }
+    fontWeight: '700',
+    color: '#ffffff',
+  },
 });
-

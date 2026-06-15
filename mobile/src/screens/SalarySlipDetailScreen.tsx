@@ -113,7 +113,7 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
       setData({
         id: record.id,
         guardName: userName,
-        guardId: record.guard_id.substring(0, 14).toUpperCase(),
+        guardId: (record as any).guards?.employee_id || record.guard_id.substring(0, 14).toUpperCase(),
         site: 'Assigned Site',
         avatar: '',
         paymentCycle: record.month || '',
@@ -150,8 +150,8 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
 
   const formatCurrency = (val: number) => {
     return '₹' + Math.max(0, val).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     });
   };
 
@@ -176,21 +176,26 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
     );
   }
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (data.status === 'paid') {
       Alert.alert('Already Paid', 'This salary slip has already been marked as PAID.');
       return;
     }
     
-    setData(prev => prev ? {
-      ...prev,
-      status: 'approved',
-    } : null);
-    
-    Alert.alert(
-      'Payment Approved',
-      `Salary for ${data.guardName} has been approved successfully!`
-    );
+    try {
+      await payrollService.approvePayrollRecord(data.id);
+      setData(prev => prev ? {
+        ...prev,
+        status: 'approved',
+      } : null);
+      
+      Alert.alert(
+        'Payment Approved',
+        `Salary for ${data.guardName} has been approved successfully!`
+      );
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to approve payroll.');
+    }
   };
 
   const openEditModal = () => {
@@ -223,200 +228,243 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
   const calcTotalDeductions = calcLatePenalty + calcUniform + calcAdvance + calcOther;
   const calcNetSalary = Math.max(0, calcTotalEarnings - calcTotalDeductions);
 
-  const saveAdjustments = () => {
+  const saveAdjustments = async () => {
     if (calcDays > calcTotalDays) {
       Alert.alert('Invalid Days', `Present days cannot exceed total days (${calcTotalDays}).`);
       return;
     }
 
-    setData(prev => prev ? {
-      ...prev,
-      baseSalary: calcBase,
-      daysPresent: calcDays,
-      proRatedSalary: calcProRated,
-      overtimeHours: parseFloat(editOvertimeHours) || 0,
-      overtimeAmount: calcOvertime,
-      totalEarnings: calcTotalEarnings,
-      lateArrivalsCount: parseInt(editLateArrivals) || 0,
-      lateArrivalPenaltyAmount: calcLatePenalty,
-      uniformInstallment: calcUniform,
-      salaryAdvance: calcAdvance,
-      otherDeductions: calcOther,
-      totalDeductions: calcTotalDeductions,
-      netSalary: calcNetSalary,
-    } : null);
+    try {
+      await payrollService.updateAdjustments(data.id, {
+        advance_deduction: calcAdvance,
+        uniform_deduction: calcUniform,
+        other_deduction: calcOther,
+        overtime_amount: calcOvertime,
+      });
 
-    setIsEditModalVisible(false);
-    Alert.alert('Success', 'Adjustments saved successfully.');
+      setData(prev => prev ? {
+        ...prev,
+        baseSalary: calcBase,
+        daysPresent: calcDays,
+        proRatedSalary: calcProRated,
+        overtimeHours: parseFloat(editOvertimeHours) || 0,
+        overtimeAmount: calcOvertime,
+        totalEarnings: calcTotalEarnings,
+        lateArrivalsCount: parseInt(editLateArrivals) || 0,
+        lateArrivalPenaltyAmount: calcLatePenalty,
+        uniformInstallment: calcUniform,
+        salaryAdvance: calcAdvance,
+        otherDeductions: calcOther,
+        totalDeductions: calcTotalDeductions,
+        netSalary: calcNetSalary,
+      } : null);
+
+      setIsEditModalVisible(false);
+      Alert.alert('Success', 'Adjustments saved successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to update adjustments.');
+    }
   };
 
   const statusConfig = getStatusStyle(data.status);
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
 
       {/* ═══ Header ═══ */}
-      <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
+      <View style={[s.topBar, { paddingTop: insets.top }]}>
         <View style={s.topBarInner}>
           <View style={s.topBarLeft}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.goBack()}
-              style={s.backBtn}
-            >
+            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
               <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <Text style={s.topBarTitle}>Salary Slip</Text>
+            <Text style={s.topBarTitle}>Salary Detail</Text>
           </View>
           <View style={s.topBarRight}>
-            <TouchableOpacity 
-              activeOpacity={0.7} 
-              style={s.topBarIconBtn}
-              onPress={() => Alert.alert('Download', 'Salary slip PDF download initiated.')}
-            >
-              <MaterialIcons name="file-download" size={22} color={Colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              activeOpacity={0.7} 
-              style={s.topBarIconBtn}
-              onPress={openEditModal}
-            >
-              <MaterialIcons name="edit" size={22} color={Colors.primary} />
-            </TouchableOpacity>
+            <View style={s.avatarContainer}>
+              <Image source={{ uri: data.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBNGg-ORY3RcRNLrcKOYkywBhQnTVQrjPgvftzZCqcXrvqgcxpPDjyYumdXAtZP2GyoybkiO_QHaAPiC-G5g2yjZUtJIbZEvbkwZH48Zf0ccn4xv5K-GUJbjwAt39CLfelCmsAh4wjKrxjurqbApF4lpykTOcSZ3NyWoKVpBGJwAXWX2MKVhw3d2jazluhQmEyF_XxcDcjNw4zXKBIjV7LjWSannrREU5jqW5A2hVbzYRFhV0lohYJOespTWJaeHuW-KaHFdRr2umQ' }} style={s.avatarImg} />
+              <View style={s.pulseDot} />
+            </View>
           </View>
         </View>
       </View>
 
       <ScrollView 
         style={s.scrollView} 
-        contentContainerStyle={s.scrollContent}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ─── Guard Profile Section ─── */}
-        <View style={s.profileCard}>
-          <Image source={{ uri: data.avatar }} style={s.profileAvatar} />
-          <View style={s.profileDetails}>
-            <Text style={s.profileName}>{data.guardName}</Text>
-            <Text style={s.profileSite}>Site: {data.site}</Text>
-            <Text style={s.profileId}>ID: {data.guardId}</Text>
-          </View>
-        </View>
-
-        {/* ─── Cycle & Status Badge Row ─── */}
-        <View style={s.statusRow}>
-          <Text style={s.paymentCycleText}>Payment Cycle: {data.paymentCycle}</Text>
-          <View style={[s.statusBadge, { backgroundColor: statusConfig.bg }]}>
-            <Text style={[s.statusText, { color: statusConfig.text }]}>
-              {statusConfig.label}
-            </Text>
-          </View>
-        </View>
-
-        {/* ─── Breakdown Card ─── */}
-        <View style={s.breakdownCard}>
-          {/* Earnings Breakdown */}
-          <View style={s.sectionHeaderBg}>
-            <Text style={s.sectionHeaderTitle}>Earnings Breakdown</Text>
-          </View>
-          <View style={s.sectionBody}>
-            <View style={s.breakdownRow}>
-              <Text style={s.rowLabel}>Base Salary</Text>
-              <Text style={s.rowValue}>{formatCurrency(data.baseSalary)}</Text>
+        {/* ─── Profile & Net Pay Section ─── */}
+        <View style={s.profileSection}>
+          <View style={s.profileRow}>
+            <View style={s.profileAvatarBox}>
+              <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB7eKOu05ydP8bmaeGUhJ3uHJ93hSc5qHgd5QiHHrdWh18O9kNyjRA5WPGiU-_vcJOmKbb7NF0aX5-qG5s8ZiEodxNud3rZibVooM1IrRrCezQwYq42qtYTdXPyfUEox200A_SkEmG1tPNJzYpnbykCO8n3v1xHuMRgAXtcLEnVINZG6xqurUEfo9IoALGU9LaWrrSWTimXJjaDYF9AbMVFf4CEcWyJaQkRAz8Wx6cEtfEYhbJmphISuIpTFsxLZiS0MeD0Ohgqok8' }} style={s.profileAvatarLg} />
             </View>
-            <View style={s.breakdownRow}>
-              <Text style={s.rowLabel}>Pro-rated ({data.daysPresent} Days)</Text>
-              <Text style={s.rowValue}>{formatCurrency(data.proRatedSalary)}</Text>
-            </View>
-            <View style={s.breakdownRow}>
-              <Text style={s.rowLabel}>Overtime ({data.overtimeHours} Hrs)</Text>
-              <Text style={s.rowValue}>{formatCurrency(data.overtimeAmount)}</Text>
-            </View>
-            
-            <View style={[s.breakdownRow, s.totalRowBorder]}>
-              <Text style={s.totalRowLabel}>Total Earnings</Text>
-              <Text style={s.totalRowValue}>{formatCurrency(data.totalEarnings)}</Text>
-            </View>
-          </View>
-
-          {/* Deductions Breakdown */}
-          <View style={s.sectionHeaderBg}>
-            <Text style={[s.sectionHeaderTitle, { color: Colors.secondary }]}>Deductions</Text>
-          </View>
-          <View style={s.sectionBody}>
-            <View style={s.breakdownRow}>
-              <Text style={s.rowLabel}>Late Arrivals ({data.lateArrivalsCount})</Text>
-              <Text style={[s.rowValue, { color: Colors.secondary }]}>
-                -{formatCurrency(data.lateArrivalPenaltyAmount)}
-              </Text>
-            </View>
-            <View style={s.breakdownRow}>
-              <Text style={s.rowLabel}>Uniform Installment</Text>
-              <Text style={[s.rowValue, { color: Colors.secondary }]}>
-                -{formatCurrency(data.uniformInstallment)}
-              </Text>
-            </View>
-            <View style={s.breakdownRow}>
-              <Text style={s.rowLabel}>Salary Advance</Text>
-              <Text style={[s.rowValue, { color: Colors.secondary }]}>
-                -{formatCurrency(data.salaryAdvance)}
-              </Text>
-            </View>
-            {data.otherDeductions > 0 && (
-              <View style={s.breakdownRow}>
-                <Text style={s.rowLabel}>Other Deductions</Text>
-                <Text style={[s.rowValue, { color: Colors.secondary }]}>
-                  -{formatCurrency(data.otherDeductions)}
-                </Text>
+            <View style={s.profileInfo}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Text style={s.profileName}>{data.guardName}</Text>
+                <View style={[s.badgeGenerated, { backgroundColor: statusConfig.bg }]}>
+                  <Text style={[s.badgeText, { color: statusConfig.text }]}>{statusConfig.label}</Text>
+                </View>
               </View>
-            )}
-
-            <View style={[s.breakdownRow, s.totalRowBorder]}>
-              <Text style={[s.totalRowLabel, { color: Colors.secondary }]}>Total Deductions</Text>
-              <Text style={[s.totalRowValue, { color: Colors.secondary }]}>
-                {formatCurrency(data.totalDeductions)}
-              </Text>
+              <View style={s.metaItem}>
+                <MaterialIcons name="badge" size={14} color={Colors.onSurfaceVariant} />
+                <Text style={s.metaText}>ID: {data.guardId}</Text>
+              </View>
+              <View style={s.metaItem}>
+                <MaterialIcons name="location-on" size={14} color={Colors.onSurfaceVariant} />
+                <Text style={s.metaText}>{data.site}</Text>
+              </View>
             </View>
           </View>
+          
+          <View style={s.netPayCard}>
+            <Text style={s.netPayLabel}>NET PAY ({data.paymentCycle.toUpperCase()})</Text>
+            <View style={s.netPayRow}>
+              <Text style={s.netPayAmount}>{formatCurrency(data.netSalary)}</Text>
+              <View style={s.growthPill}>
+                <Text style={s.growthText}>+4% vs Prev</Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
-          {/* Net Salary Payout Footer */}
-          <View style={s.payoutFooter}>
+        {/* ─── Attendance Summary Bento ─── */}
+        <View style={s.bentoGrid}>
+          <View style={s.bentoCard}>
             <View>
-              <Text style={s.payoutLabel}>Final Payout</Text>
-              <Text style={s.payoutTitle}>NET SALARY</Text>
+              <Text style={s.bentoLabel}>ATTENDANCE</Text>
+              <Text style={s.bentoValue}>{data.daysPresent}/{data.totalDays} Days</Text>
             </View>
-            <View style={s.payoutRight}>
-              <Text style={s.payoutAmount}>
-                ₹{Math.round(data.netSalary).toLocaleString('en-IN')}
-              </Text>
-              <Text style={s.payoutMethod}>Credited via {data.payoutMethod}</Text>
+            <View style={[s.bentoIconBox, { backgroundColor: Colors.surfaceContainerHigh }]}>
+              <MaterialIcons name="event-available" size={24} color={Colors.primary} />
+            </View>
+          </View>
+          
+          <View style={s.bentoCard}>
+            <View>
+              <Text style={s.bentoLabel}>LEAVES</Text>
+              <Text style={[s.bentoValue, { color: Colors.secondary }]}>{data.totalDays - data.daysPresent} Absent</Text>
+            </View>
+            <View style={[s.bentoIconBox, { backgroundColor: `${Colors.secondary}1A` }]}>
+              <MaterialIcons name="event-busy" size={24} color={Colors.secondary} />
+            </View>
+          </View>
+          
+          <View style={s.bentoCard}>
+            <View>
+              <Text style={s.bentoLabel}>PUNCTUALITY</Text>
+              <Text style={s.bentoValue}>{data.lateArrivalsCount} Late</Text>
+            </View>
+            <View style={[s.bentoIconBox, { backgroundColor: Colors.surfaceContainerLow }]}>
+              <MaterialIcons name="schedule" size={24} color={Colors.outline} />
             </View>
           </View>
         </View>
 
-        {/* ─── Actions Buttons ─── */}
-        <View style={s.actionsContainer}>
-          <TouchableOpacity 
-            activeOpacity={0.9} 
-            style={s.approveBtn} 
-            onPress={handleApprove}
-          >
-            <MaterialIcons name="check-circle" size={20} color="#FFFFFF" />
-            <Text style={s.approveBtnText}>Approve &amp; Release Payment</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            activeOpacity={0.8} 
-            style={s.editAdjustmentsBtn} 
-            onPress={openEditModal}
-          >
-            <MaterialIcons name="tune" size={20} color={Colors.primary} />
-            <Text style={s.editAdjustmentsBtnText}>Edit Adjustments</Text>
-          </TouchableOpacity>
+        {/* ─── Earnings Card ─── */}
+        <View style={s.detailCard}>
+          <View style={s.detailHeader}>
+            <Text style={s.detailTitle}>Earnings</Text>
+            <MaterialIcons name="trending-up" size={20} color={Colors.successGreen} />
+          </View>
+          <View style={s.detailBody}>
+            <View style={s.detailRow}>
+              <View>
+                <Text style={s.detailRowTitle}>Base Salary</Text>
+                <Text style={s.detailRowSub}>Pro-rated for {data.daysPresent} days</Text>
+              </View>
+              <Text style={s.detailRowAmount}>{formatCurrency(data.proRatedSalary)}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.detailRow}>
+              <View>
+                <Text style={s.detailRowTitle}>Overtime (OT)</Text>
+                <Text style={s.detailRowSub}>{data.overtimeHours} Hours</Text>
+              </View>
+              <Text style={s.detailRowAmount}>{formatCurrency(data.overtimeAmount)}</Text>
+            </View>
+          </View>
+          <View style={s.detailFooter}>
+            <Text style={s.detailFooterLabel}>GROSS EARNINGS</Text>
+            <Text style={s.detailFooterAmountSuccess}>{formatCurrency(data.totalEarnings)}</Text>
+          </View>
         </View>
 
-        <View style={{ height: 40 }} />
+        {/* ─── Deductions Card ─── */}
+        <View style={s.detailCard}>
+          <View style={s.detailHeader}>
+            <Text style={s.detailTitle}>Deductions</Text>
+            <MaterialIcons name="trending-down" size={20} color={Colors.secondary} />
+          </View>
+          <View style={s.detailBody}>
+            <View style={s.detailRow}>
+              <View>
+                <Text style={s.detailRowTitle}>Late Penalty</Text>
+                <Text style={s.detailRowSub}>{data.lateArrivalsCount} Instances detected</Text>
+              </View>
+              <Text style={s.detailRowAmountDanger}>{formatCurrency(data.lateArrivalPenaltyAmount)}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.detailRow}>
+              <View>
+                <Text style={s.detailRowTitle}>Uniform Installment</Text>
+                <Text style={s.detailRowSub}>Payment</Text>
+              </View>
+              <Text style={s.detailRowAmountDanger}>{formatCurrency(data.uniformInstallment)}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.detailRow}>
+              <View>
+                <Text style={s.detailRowTitle}>Advance Recovery</Text>
+                <Text style={s.detailRowSub}>Partial repayment</Text>
+              </View>
+              <Text style={s.detailRowAmountDanger}>{formatCurrency(data.salaryAdvance)}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.detailRow}>
+              <View>
+                <Text style={s.detailRowTitle}>Other Deductions</Text>
+                <Text style={s.detailRowSub}>Miscellaneous</Text>
+              </View>
+              <Text style={s.detailRowAmountDanger}>{formatCurrency(data.otherDeductions)}</Text>
+            </View>
+          </View>
+          <View style={s.detailFooter}>
+            <Text style={s.detailFooterLabel}>TOTAL DEDUCTIONS</Text>
+            <Text style={s.detailFooterAmountDanger}>{formatCurrency(data.totalDeductions)}</Text>
+          </View>
+        </View>
+
+        {/* ─── Meta Info ─── */}
+        <View style={s.metaCard}>
+          <View style={s.metaCardHeader}>
+            <MaterialIcons name="history" size={16} color={Colors.primary} />
+            <Text style={s.metaCardTitle}>PAYROLL METADATA</Text>
+          </View>
+          <View style={s.metaCardRow}>
+            <Text style={s.metaCardLabel}>Calculation Engine</Text>
+            <Text style={s.metaCardValue}>Sentinel-Core v2.4</Text>
+          </View>
+          <View style={s.metaCardRow}>
+            <Text style={s.metaCardLabel}>Tax Slab</Text>
+            <Text style={s.metaCardValue}>Exempt (&lt;₹5L/yr)</Text>
+          </View>
+        </View>
+
       </ScrollView>
+
+      {/* ─── Sticky Bottom Actions ─── */}
+      <View style={[s.bottomActionBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <TouchableOpacity style={s.btnSecondary} onPress={openEditModal}>
+          <Text style={s.btnSecondaryText}>EDIT ADJUSTMENTS</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.btnPrimary} onPress={handleApprove}>
+          <MaterialIcons name="payments" size={18} color="#fff" />
+          <Text style={s.btnPrimaryText}>APPROVE & RELEASE</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ═══ Edit Adjustments Modal ═══ */}
       <Modal
@@ -430,138 +478,110 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={s.modalContainer}
           >
+            <View style={s.modalHandleWrap}>
+              <View style={s.modalHandle} />
+            </View>
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>Edit Adjustments</Text>
-              <TouchableOpacity onPress={() => setIsEditModalVisible(false)}>
-                <MaterialIcons name="close" size={24} color={Colors.onSurface} />
-              </TouchableOpacity>
+              <Text style={s.modalSubtitle}>Modify workforce parameters for the current payroll cycle.</Text>
             </View>
 
             <ScrollView style={s.modalForm} showsVerticalScrollIndicator={false}>
-              <Text style={s.formSectionTitle}>Earnings Config</Text>
-              <View style={s.inputGroup}>
-                <Text style={s.inputLabel}>Base Salary (₹)</Text>
-                <TextInput
-                  style={s.textInput}
-                  keyboardType="numeric"
-                  value={editBaseSalary}
-                  onChangeText={setEditBaseSalary}
-                />
-              </View>
-
-              <View style={s.inputGroup}>
-                <Text style={s.inputLabel}>Days Present (max {data.totalDays})</Text>
-                <TextInput
-                  style={s.textInput}
-                  keyboardType="numeric"
-                  value={editDaysPresent}
-                  onChangeText={setEditDaysPresent}
-                />
-              </View>
-
+              
               <View style={s.rowInputs}>
                 <View style={[s.inputGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={s.inputLabel}>Overtime Hours</Text>
-                  <TextInput
-                    style={s.textInput}
-                    keyboardType="numeric"
-                    value={editOvertimeHours}
-                    onChangeText={setEditOvertimeHours}
-                  />
+                  <Text style={s.inputLabel}>DAYS PRESENT (OVERRIDE)</Text>
+                  <View style={s.inputIconWrap}>
+                    <MaterialIcons name="calendar-today" size={18} color={Colors.outline} style={s.inputIcon} />
+                    <TextInput
+                      style={s.textInputWithIcon}
+                      keyboardType="numeric"
+                      value={editDaysPresent}
+                      onChangeText={setEditDaysPresent}
+                    />
+                  </View>
                 </View>
                 <View style={[s.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={s.inputLabel}>Overtime Amount (₹)</Text>
-                  <TextInput
-                    style={s.textInput}
-                    keyboardType="numeric"
-                    value={editOvertimeAmount}
-                    onChangeText={setEditOvertimeAmount}
-                  />
+                  <Text style={s.inputLabel}>OVERTIME HOURS</Text>
+                  <View style={s.inputIconWrap}>
+                    <MaterialIcons name="timer" size={18} color={Colors.outline} style={s.inputIcon} />
+                    <TextInput
+                      style={s.textInputWithIcon}
+                      keyboardType="numeric"
+                      value={editOvertimeHours}
+                      onChangeText={setEditOvertimeHours}
+                    />
+                  </View>
                 </View>
               </View>
 
-              <Text style={[s.formSectionTitle, { marginTop: 16 }]}>Deductions Config</Text>
+              <Text style={[s.formSectionTitle, { marginTop: 16 }]}>DEDUCTIONS</Text>
+              
               <View style={s.rowInputs}>
                 <View style={[s.inputGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={s.inputLabel}>Late Arrivals Count</Text>
-                  <TextInput
-                    style={s.textInput}
-                    keyboardType="numeric"
-                    value={editLateArrivals}
-                    onChangeText={setEditLateArrivals}
-                  />
+                  <Text style={s.inputLabel}>Salary Advance</Text>
+                  <View style={s.inputIconWrap}>
+                    <Text style={s.inputPrefix}>₹</Text>
+                    <TextInput
+                      style={s.textInputWithIcon}
+                      keyboardType="numeric"
+                      value={editSalaryAdvance}
+                      onChangeText={setEditSalaryAdvance}
+                    />
+                  </View>
                 </View>
                 <View style={[s.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={s.inputLabel}>Penalty Amount (₹)</Text>
-                  <TextInput
-                    style={s.textInput}
-                    keyboardType="numeric"
-                    value={editLatePenalty}
-                    onChangeText={setEditLatePenalty}
-                  />
+                  <Text style={s.inputLabel}>Uniform Deduction</Text>
+                  <View style={s.inputIconWrap}>
+                    <Text style={s.inputPrefix}>₹</Text>
+                    <TextInput
+                      style={s.textInputWithIcon}
+                      keyboardType="numeric"
+                      value={editUniformInstallment}
+                      onChangeText={setEditUniformInstallment}
+                    />
+                  </View>
                 </View>
               </View>
 
               <View style={s.inputGroup}>
-                <Text style={s.inputLabel}>Uniform Dues Installment (₹)</Text>
-                <TextInput
-                  style={s.textInput}
-                  keyboardType="numeric"
-                  value={editUniformInstallment}
-                  onChangeText={setEditUniformInstallment}
-                />
-              </View>
-
-              <View style={s.inputGroup}>
-                <Text style={s.inputLabel}>Salary Advance Deduction (₹)</Text>
-                <TextInput
-                  style={s.textInput}
-                  keyboardType="numeric"
-                  value={editSalaryAdvance}
-                  onChangeText={setEditSalaryAdvance}
-                />
-              </View>
-
-              <View style={s.inputGroup}>
-                <Text style={s.inputLabel}>Other Deductions (₹)</Text>
-                <TextInput
-                  style={s.textInput}
-                  keyboardType="numeric"
-                  value={editOtherDeductions}
-                  onChangeText={setEditOtherDeductions}
-                />
+                <Text style={s.inputLabel}>Other Deductions</Text>
+                <View style={s.inputIconWrap}>
+                  <Text style={s.inputPrefix}>₹</Text>
+                  <TextInput
+                    style={s.textInputWithIcon}
+                    keyboardType="numeric"
+                    value={editOtherDeductions}
+                    onChangeText={setEditOtherDeductions}
+                  />
+                </View>
               </View>
 
               {/* Real-time Recalculation Display */}
-              <View style={s.modalSummaryBox}>
-                <View style={s.summaryBoxRow}>
-                  <Text style={s.summaryBoxLabel}>Total Earnings:</Text>
-                  <Text style={s.summaryBoxValue}>{formatCurrency(calcTotalEarnings)}</Text>
+              <View style={s.previewBox}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.previewLabel}>ADJUSTED CALCULATION</Text>
+                  <Text style={s.previewSub}>Final payout for this employee</Text>
                 </View>
-                <View style={s.summaryBoxRow}>
-                  <Text style={s.summaryBoxLabel}>Total Deductions:</Text>
-                  <Text style={[s.summaryBoxValue, { color: Colors.secondary }]}>
-                    -{formatCurrency(calcTotalDeductions)}
-                  </Text>
-                </View>
-                <View style={[s.summaryBoxRow, s.summaryBoxTotalRow]}>
-                  <Text style={s.summaryBoxTotalLabel}>Net Salary Payout:</Text>
-                  <Text style={s.summaryBoxTotalValue}>{formatCurrency(calcNetSalary)}</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={s.previewAmount}>{formatCurrency(calcNetSalary)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MaterialIcons name="auto-graph" size={14} color={Colors.successGreen} />
+                    <Text style={s.previewLive}>LIVE PREVIEW</Text>
+                  </View>
                 </View>
               </View>
 
-              <View style={{ height: 30 }} />
+              <View style={{ height: 40 }} />
             </ScrollView>
 
             <View style={s.modalActions}>
-              <TouchableOpacity
-                style={s.modalCancelBtn}
-                onPress={() => setIsEditModalVisible(false)}
-              >
-                <Text style={s.modalCancelText}>Cancel</Text>
+              <TouchableOpacity style={s.modalCancelBtn} onPress={() => setIsEditModalVisible(false)}>
+                <Text style={s.modalCancelText}>CANCEL</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.modalSaveBtn} onPress={saveAdjustments}>
-                <Text style={s.modalSaveText}>Save Changes</Text>
+                <MaterialIcons name="save" size={18} color="#fff" />
+                <Text style={s.modalSaveText}>SAVE ADJUSTMENTS</Text>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
@@ -577,9 +597,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   topBar: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.outlineVariant,
+    backgroundColor: Colors.surface,
     paddingHorizontal: 16,
     zIndex: 50,
   },
@@ -587,8 +605,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
-    height: 56,
+    height: 64,
   },
   topBarLeft: {
     flexDirection: 'row',
@@ -603,358 +620,505 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   topBarTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: Colors.primary,
   },
   topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  topBarIconBtn: {
+  avatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: Colors.outlineVariant,
+    position: 'relative',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
+  pulseDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    backgroundColor: Colors.successGreen,
+    borderWidth: 2,
+    borderColor: '#fff',
+    borderRadius: 6,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  profileSection: {
+    marginBottom: 24,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 16,
+  },
+  profileAvatarBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#fff',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    position: 'relative',
+    backgroundColor: '#fff',
+  },
+  profileAvatarLg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+  },
+  profileInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingTop: 4,
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  badgeGenerated: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  metaText: {
+    fontSize: 13,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '500',
+  },
+  netPayCard: {
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  netPayLabel: {
+    fontSize: 12,
+    color: Colors.primaryFixedDim,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  netPayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  netPayAmount: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  growthPill: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  growthText: {
+    color: Colors.successGreen,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  bentoGrid: {
+    marginBottom: 24,
+    gap: 12,
+  },
+  bentoCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bentoLabel: {
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  bentoValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  bentoIconBox: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: Spacing.screenPadding,
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
+  detailCard: {
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: BorderRadius.lg,
-    padding: 16,
-    marginBottom: 16,
-    gap: 16,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  profileAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: Colors.primaryContainer,
-  },
-  profileDetails: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  profileSite: {
-    fontSize: 14,
-    color: Colors.onSurfaceVariant,
-    marginBottom: 2,
-  },
-  profileId: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  paymentCycleText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.onSurfaceVariant,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.full,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  breakdownCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: BorderRadius.lg,
+    borderColor: Colors.outlineVariant,
+    borderRadius: 12,
+    marginBottom: 24,
     overflow: 'hidden',
-    marginBottom: 20,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.07,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1.5 },
   },
-  sectionHeaderBg: {
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: '#c3c6d0',
-  },
-  sectionHeaderTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  sectionBody: {
-    padding: 16,
-    gap: 8,
-  },
-  breakdownRow: {
+  detailHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.outlineVariant,
   },
-  rowLabel: {
-    fontSize: 14,
-    color: Colors.onSurfaceVariant,
+  detailTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
   },
-  rowValue: {
-    fontSize: 14,
+  detailBody: {
+    padding: 20,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  detailRowTitle: {
+    fontSize: 15,
     fontWeight: '600',
     color: Colors.onSurface,
   },
-  totalRowBorder: {
+  detailRowSub: {
+    fontSize: 12,
+    color: Colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  detailRowAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  detailRowAmountDanger: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.secondary,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.outlineVariant,
+    marginVertical: 8,
+  },
+  detailFooter: {
+    backgroundColor: Colors.surfaceContainerLowest,
     borderTopWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#c3c6d0',
-    paddingTop: 12,
-    marginTop: 6,
+    borderTopColor: Colors.outlineVariant,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  totalRowLabel: {
-    fontSize: 15,
+  detailFooterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.5,
+  },
+  detailFooterAmountSuccess: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.successGreen,
+  },
+  detailFooterAmountDanger: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.secondary,
+  },
+  metaCard: {
+    backgroundColor: 'rgba(238, 237, 242, 0.5)',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: 12,
+    padding: 20,
+  },
+  metaCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  metaCardTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.primary,
+    letterSpacing: 1,
+  },
+  metaCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  metaCardLabel: {
+    fontSize: 14,
+    color: Colors.onSurfaceVariant,
+  },
+  metaCardValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  bottomActionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderTopWidth: 1,
+    borderTopColor: Colors.outlineVariant,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  btnSecondary: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  btnSecondaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 0.5,
+  },
+  btnPrimary: {
+    flex: 1,
+    backgroundColor: Colors.secondary,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+    elevation: 4,
+    shadowColor: Colors.secondary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  btnPrimaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  // Modal Styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 39, 82, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    maxHeight: '90%',
+  },
+  modalHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  modalHandle: {
+    width: 48,
+    height: 6,
+    backgroundColor: Colors.outlineVariant,
+    borderRadius: 3,
+  },
+  modalHeader: {
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
     fontWeight: '700',
     color: Colors.primary,
   },
-  totalRowValue: {
-    fontSize: 15,
+  modalSubtitle: {
+    fontSize: 14,
+    color: Colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  modalForm: {
+    paddingHorizontal: 24,
+  },
+  formSectionTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.outline,
+    letterSpacing: 0.5,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.outlineVariant,
+    paddingBottom: 8,
+    marginBottom: 16,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  inputIconWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  inputIcon: {
+    marginRight: 8,
+  },
+  inputPrefix: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+    marginRight: 8,
+  },
+  textInputWithIcon: {
+    flex: 1,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.primary,
+    height: '100%',
+    padding: 0,
   },
-  payoutFooter: {
-    backgroundColor: Colors.primaryContainer,
+  rowInputs: {
+    flexDirection: 'row',
+  },
+  previewBox: {
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
     padding: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 8,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
-  payoutLabel: {
-    fontSize: 11,
+  previewLabel: {
+    fontSize: 10,
     fontWeight: '600',
     color: Colors.onPrimaryContainer,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
-  payoutTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#ffffff',
+  previewSub: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.8,
     marginTop: 2,
   },
-  payoutRight: {
-    alignItems: 'flex-end',
-  },
-  payoutAmount: {
-    fontSize: 32,
+  previewAmount: {
+    fontSize: 24,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#fff',
   },
-  payoutMethod: {
-    fontSize: 11,
-    color: Colors.onPrimaryContainer,
-    marginTop: 4,
-  },
-  actionsContainer: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  approveBtn: {
-    backgroundColor: '#2E7D32',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: BorderRadius.xl,
-    gap: 8,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  approveBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  editAdjustmentsBtn: {
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: BorderRadius.xl,
-    gap: 8,
-  },
-  editAdjustmentsBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  
-  // Modal Styles
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  modalTitle: {
-    fontSize: 18,
+  previewLive: {
+    fontSize: 10,
     fontWeight: '700',
-    color: Colors.onSurface,
-  },
-  modalForm: {
-    padding: 16,
-  },
-  formSectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.outline,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  inputGroup: {
-    marginBottom: 14,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
-    marginBottom: 6,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#c3c6d0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: Colors.onSurface,
-    backgroundColor: '#F8FAFC',
-  },
-  rowInputs: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalSummaryBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 16,
-    marginTop: 16,
-    gap: 8,
-  },
-  summaryBoxRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryBoxLabel: {
-    fontSize: 13,
-    color: Colors.onSurfaceVariant,
-  },
-  summaryBoxValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.onSurface,
-  },
-  summaryBoxTotalRow: {
-    borderTopWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingTop: 10,
-    marginTop: 4,
-  },
-  summaryBoxTotalLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  summaryBoxTotalValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.primary,
+    color: Colors.successGreen,
   },
   modalActions: {
     flexDirection: 'row',
-    padding: 16,
+    padding: 24,
     borderTopWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 12,
+    borderTopColor: Colors.outlineVariant,
+    backgroundColor: 'rgba(244, 243, 247, 0.5)',
+    gap: 16,
   },
   modalCancelBtn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    alignItems: 'center',
+    height: 56,
     justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
   },
   modalCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 1,
   },
   modalSaveBtn: {
     flex: 1,
-    backgroundColor: Colors.primaryContainer,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
+    height: 56,
+    backgroundColor: Colors.secondary,
+    flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    gap: 8,
+    elevation: 4,
+    shadowColor: Colors.secondary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   modalSaveText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 1,
   },
 });

@@ -52,9 +52,9 @@ Deno.serve(async (req: Request) => {
       const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
       const totalWorkingDays = monthEnd.getDate();
 
-      // Get guards to process
+      // Get personnel to process (all categories)
       let guardsQuery = supabase
-        .from("guards")
+        .from("workforce_personnel")
         .select("id, user_id, base_salary, users(name, phone)")
         .eq("employment_status", "active");
 
@@ -227,7 +227,7 @@ Deno.serve(async (req: Request) => {
     // LIST PAYROLL RECORDS
     // ======================================================
     if (req.method === "GET" && !url.searchParams.get("id")) {
-      const roleError = requireRole(user, ["admin", "guard"]);
+      const roleError = requireRole(user, ["admin", "guard", "workforce_personnel"]);
       if (roleError) return roleError;
 
       const month = url.searchParams.get("month");
@@ -238,15 +238,15 @@ Deno.serve(async (req: Request) => {
         .from("payroll")
         .select(`
           *,
-          guards(id, user_id, users(name, phone))
+          guards:workforce_personnel(id, user_id, category_id, employee_id, phone, users(name, phone))
         `)
         .order("month", { ascending: false });
 
       // Guards can only see their own approved/paid slips
-      if (user.role === "guard" && user.guard_id) {
+      if ((user.role === "guard" || user.role === "workforce_personnel") && user.guard_id) {
         query = query
           .eq("guard_id", user.guard_id)
-          .in("status", ["approved", "paid"]);
+          .in("status", ["generated", "approved", "paid"]);
       } else {
         if (guardId) query = query.eq("guard_id", guardId);
         if (status) query = query.eq("status", status);
@@ -273,8 +273,8 @@ Deno.serve(async (req: Request) => {
         .from("payroll")
         .select(`
           *,
-          guards(
-            id, user_id, base_salary, bank_account_number, bank_ifsc, bank_name,
+          guards:workforce_personnel(
+            id, user_id, category_id, employee_id, phone, base_salary, bank_account_number, bank_ifsc, bank_name,
             users(name, phone)
           )
         `)
@@ -285,12 +285,12 @@ Deno.serve(async (req: Request) => {
         return errorResponse("Salary slip not found", 404);
       }
 
-      // Guards can only see their own approved/paid slips
-      if (user.role === "guard") {
+      // Guards can only see their own generated/approved/paid slips
+      if (user.role === "guard" || user.role === "workforce_personnel") {
         if (user.guard_id !== slip.guard_id) {
           return errorResponse("Cannot view other guard's salary", 403);
         }
-        if (!["approved", "paid"].includes(slip.status)) {
+        if (!["generated", "approved", "paid"].includes(slip.status)) {
           return errorResponse("Salary slip not yet approved", 403);
         }
       }

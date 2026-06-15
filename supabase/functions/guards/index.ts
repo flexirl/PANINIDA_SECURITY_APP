@@ -127,10 +127,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === "POST" && guardId && action === "document") {
-      if (user.role === "guard" && user.guard_id !== guardId) {
+      if ((user.role === "guard" || user.role === "workforce_personnel") && user.guard_id !== guardId) {
         return errorResponse("Cannot upload documents for other guards", 403);
       }
-      const roleError = requireRole(user, ["admin", "guard"]);
+      const roleError = requireRole(user, ["admin", "guard", "workforce_personnel"]);
       if (roleError) return roleError;
 
       const formData = await req.formData();
@@ -309,10 +309,10 @@ Deno.serve(async (req: Request) => {
     // ======================================================
     if (req.method === "GET" && guardId) {
       // Guard can view own profile, admin can view all
-      if (user.role === "guard" && user.guard_id !== guardId) {
+      if ((user.role === "guard" || user.role === "workforce_personnel") && user.guard_id !== guardId) {
         return errorResponse("Cannot view other guard's profile", 403);
       }
-      const roleError = requireRole(user, ["admin", "manager", "guard"]);
+      const roleError = requireRole(user, ["admin", "manager", "guard", "workforce_personnel"]);
       if (roleError) return roleError;
 
       const { data: guard, error: detailError } = await supabase
@@ -338,10 +338,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === "PUT" && guardId && action !== "status") {
-      if (user.role === "guard" && user.guard_id !== guardId) {
+      if ((user.role === "guard" || user.role === "workforce_personnel") && user.guard_id !== guardId) {
         return errorResponse("Cannot update other guard's profile", 403);
       }
-      const roleError = requireRole(user, ["admin", "guard"]);
+      const roleError = requireRole(user, ["admin", "guard", "workforce_personnel"]);
       if (roleError) return roleError;
 
       const body = await req.json();

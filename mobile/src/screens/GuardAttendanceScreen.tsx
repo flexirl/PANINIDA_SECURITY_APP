@@ -21,6 +21,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLocation } from '../hooks/useLocation';
 import { useFileUpload } from '../hooks/useFileUpload';
 import * as attendanceService from '../api/attendanceService';
+import * as workforceAttendanceService from '../api/workforceAttendanceService';
 import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
 
@@ -233,23 +234,60 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
       return;
     }
 
-    if (!selfieUri) {
+    if (!isCheckedIn && !selfieUri) {
       Alert.alert('Selfie Required / सेल्फी आवश्यक', 'Please take a verification selfie first. / कृपया पहले सत्यापन के लिए सेल्फी लें।');
       return;
     }
+
+    // ── EARLY CHECK-OUT WARNING ──
+    if (isCheckedIn) {
+      const minPresent = siteDetails?.min_hours_present ?? 7;
+      const minHalfDay = siteDetails?.min_hours_half_day ?? 4;
+      const hoursWorked = secondsWorked / 3600;
+
+      if (hoursWorked < minPresent) {
+        const hoursH = Math.floor(hoursWorked);
+        const hoursM = Math.round((hoursWorked - hoursH) * 60);
+        const expectedStatus = hoursWorked < minHalfDay ? 'ABSENT / अनुपस्थित' : 'HALF DAY / आधा दिन';
+        
+        return new Promise<void>((resolve) => {
+          Alert.alert(
+            'Early Check-Out Warning / जल्दी चेक-आउट चेतावनी',
+            `You have only worked ${hoursH}h ${hoursM}m.\n` +
+            `Minimum required for full attendance: ${minPresent} hours\n\n` +
+            `Your attendance will be marked as: ${expectedStatus}\n\n` +
+            `आपने केवल ${hoursH} घंटे ${hoursM} मिनट काम किया है।\n` +
+            `पूर्ण उपस्थिति के लिए न्यूनतम: ${minPresent} घंटे\n` +
+            `आपकी हाजिरी ${expectedStatus} के रूप में दर्ज होगी`,
+            [
+              { text: 'Cancel / रद्द करें', style: 'cancel', onPress: () => resolve() },
+              { text: 'Check Out Anyway / फिर भी चेक आउट करें', style: 'destructive', onPress: () => { executeCheckInOut(); resolve(); } }
+            ]
+          );
+        });
+      }
+    }
+
+    await executeCheckInOut();
+  };
+
+  const executeCheckInOut = async () => {
+    const personnelId = user?.workforce_personnel_id || user?.guard_id;
+    const siteId = user?.current_assignment?.site_id || siteDetails?.id;
+    if (!personnelId || !siteId) return;
 
     try {
       setSubmitting(true);
       const todayStr = new Date().toISOString().split('T')[0];
 
-      // ── Upload selfie to storage first (fixes critical bug: raw URIs were lost after app restart) ──
-      let uploadedSelfieUrl = selfieStorageUrl; // Use already-uploaded URL if available
-      if (selfieUri && !selfieStorageUrl) {
+      // ── Upload selfie to storage first (ONLY FOR CHECK-IN) ──
+      let uploadedSelfieUrl = selfieStorageUrl;
+      if (!isCheckedIn && selfieUri && !selfieStorageUrl) {
         const uploadResult = await uploadFile({
           fileUri: selfieUri,
           category: 'attendance',
           personnelId: personnelId,
-          metadata: { type: isCheckedIn ? 'check_out' : 'check_in', date: todayStr },
+          metadata: { type: 'check_in', date: todayStr },
         });
 
         if (!uploadResult.success) {
@@ -264,47 +302,49 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
         setSelfieStorageUrl(uploadedSelfieUrl);
       }
 
-      if (user.role === 'workforce_personnel' || user.workforce_personnel_id) {
+      if (user?.role === 'workforce_personnel' || user?.workforce_personnel_id) {
         if (!isCheckedIn) {
-          // Check-in
-          const checkInTime = new Date().toISOString();
-          const { data, error } = await supabase
-            .from('workforce_attendance')
-            .insert({
-              personnel_id: personnelId,
-              site_id: siteId,
-              attendance_date: todayStr,
-              check_in_time: checkInTime,
-              check_in_selfie: uploadedSelfieUrl,
-              check_in_latitude: gpsCoords?.latitude || null,
-              check_in_longitude: gpsCoords?.longitude || null,
-              status: 'present',
-              is_manual_entry: false
-            })
-            .select()
-            .single();
+          // ── CHECK-IN via service (with late detection) ──
+          const result = await workforceAttendanceService.checkIn({
+            personnel_id: personnelId,
+            site_id: siteId,
+            latitude: gpsCoords?.latitude,
+            longitude: gpsCoords?.longitude,
+            selfie_url: uploadedSelfieUrl || undefined,
+          });
 
-          if (error) throw error;
-          setAttendanceRecord(data);
+          setAttendanceRecord(result);
           setIsCheckedIn(true);
-          setSelfieStorageUrl(null); // Reset for check-out selfie
-          Alert.alert('Success / सफलता', 'Checked in successfully. / चेक इन सफलतापूर्वक पूरा हुआ।');
-        } else {
-          // Check-out
-          const checkOutTime = new Date().toISOString();
-          const { data, error } = await supabase
-            .from('workforce_attendance')
-            .update({
-              check_out_time: checkOutTime,
-              check_out_selfie: uploadedSelfieUrl,
-            })
-            .eq('id', attendanceRecord.id)
-            .select()
-            .single();
+          // Reset selfie state for check-out
+          setSelfieUri(null);
+          setSelfieStorageUrl(null);
 
-          if (error) throw error;
-          setAttendanceRecord(data);
-          Alert.alert('Success / सफलता', 'Checked out successfully. / चेक आउट सफलतापूर्वक पूरा हुआ।');
+          const lateMsg = result.status === 'late'
+            ? `\n⚠️ Marked as LATE / देरी से चिह्नित\n${result.remarks || ''}`
+            : '';
+          Alert.alert('Check-In Success / चेक इन सफल', `Checked in successfully. / चेक इन सफलतापूर्वक पूरा हुआ।${lateMsg}`);
+        } else {
+          // ── CHECK-OUT via service (with geofence + status calc, NO SELFIE) ──
+          const result = await workforceAttendanceService.checkOut(attendanceRecord.id, {
+            latitude: gpsCoords?.latitude,
+            longitude: gpsCoords?.longitude,
+          });
+
+          setAttendanceRecord(result);
+          
+          // Build status message
+          let statusMsg = '';
+          if (result.status === 'present') statusMsg = '✅ PRESENT / उपस्थित';
+          else if (result.status === 'present_late') statusMsg = '⚠️ PRESENT (LATE) / उपस्थित (देरी से)';
+          else if (result.status === 'half_day') statusMsg = '🔶 HALF DAY / आधा दिन';
+          else if (result.status === 'absent') statusMsg = '❌ ABSENT (Insufficient hours) / अनुपस्थित';
+          
+          Alert.alert(
+            'Check-Out Complete / चेक आउट पूरा',
+            `Checked out successfully. / चेक आउट सफलतापूर्वक पूरा हुआ।\n\n` +
+            `Status: ${statusMsg}\n` +
+            `${result.remarks || ''}`
+          );
         }
       } else {
         // Legacy guard check-in/out
@@ -318,14 +358,14 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
           } as any);
           setAttendanceRecord(res);
           setIsCheckedIn(true);
-          setSelfieStorageUrl(null); // Reset for check-out selfie
+          setSelfieUri(null);
+          setSelfieStorageUrl(null);
           Alert.alert('Success / सफलता', 'Checked in successfully. / चेक इन सफलतापूर्वक पूरा हुआ।');
         } else {
           const res = await attendanceService.checkOut(attendanceRecord.id, {
             guard_id: personnelId,
             latitude: gpsCoords?.latitude || 0,
             longitude: gpsCoords?.longitude || 0,
-            selfie_url: uploadedSelfieUrl,
           } as any);
           setAttendanceRecord(res);
           Alert.alert('Success / सफलता', 'Checked out successfully. / चेक आउट सफलतापूर्वक पूरा हुआ।');
@@ -347,8 +387,8 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
   ) <= Number(siteDetails.geofence_radius));
 
   const navItems = [
-    { key: 'home', icon: 'home' as const, label: 'Home' },
-    { key: 'attendance', icon: 'calendar-today' as const, label: 'Attendance' },
+    { key: 'home', icon: 'dashboard' as const, label: 'Home' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
     { key: 'salary', icon: 'payments' as const, label: 'Salary' },
     { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
@@ -519,66 +559,153 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
           </View>
         </View>
 
-        {/* ─── Identity Verification Section ─── */}
-        <View style={s.verificationCard}>
-          <View style={s.verificationHeader}>
-            <View>
-              <Text style={s.verificationTitle}>Identity Verification</Text>
-              <Text style={s.verificationSubTitle}>पहचान सत्यापन</Text>
-            </View>
-            <View style={s.requiredBadge}>
-              <Text style={s.requiredBadgeText}>REQUIRED</Text>
-            </View>
-          </View>
-          
-          <View style={s.cameraPreviewContainer}>
-            <View style={s.cameraPreviewFrame}>
-              {selfieUri ? (
-                <Image source={{ uri: selfieUri }} style={s.capturedSelfie} />
-              ) : (
-                <View style={s.placeholderIconFrame}>
-                  <Text style={s.placeholderText}>Identity Preview</Text>
-                </View>
+        {/* ─── Late Check-in Badge ─── */}
+        {isCheckedIn && attendanceRecord?.status === 'late' && (
+          <View style={s.lateBadgeContainer}>
+            <View style={s.lateBadge}>
+              <MaterialIcons name="schedule" size={16} color="#FFF" />
+              <Text style={s.lateBadgeText}>
+                ⚠️ LATE CHECK-IN / देरी से चेक इन
+              </Text>
+              {attendanceRecord?.remarks && (
+                <Text style={s.lateBadgeSubText}>{attendanceRecord.remarks}</Text>
               )}
             </View>
-            
-            <TouchableOpacity 
-              activeOpacity={0.85} 
-              style={s.cameraCaptureBtn} 
-              onPress={handleTakeSelfie}
-            >
-              <MaterialIcons name="photo-camera" size={24} color="#ffffff" />
-            </TouchableOpacity>
           </View>
+        )}
 
-          <View style={s.previewInfoRow}>
-            <View style={{ flex: 1, alignItems: 'center', marginBottom: 12 }}>
-              <Text style={s.selfieRequiredText}>Live Selfie Required / लाइव सेल्फी आवश्यक</Text>
-              <Text style={s.selfieInstructText}>
-                Please ensure your face is clearly visible in well-lit conditions. / कृपया सुनिश्चित करें कि आपका चेहरा अच्छी रोशनी में स्पष्ट रूप से दिखाई दे रहा है।
-              </Text>
-            </View>
-          </View>
-
-          <View style={s.divider} />
-
-          <View style={s.verificationDetailsRow}>
-            <View style={s.detailCol}>
-              <View style={s.detailIconWrapper}>
-                <MaterialIcons name="schedule" size={18} color={Colors.primary} />
-              </View>
+        {/* ─── Identity Verification Section (Check-in Only) ─── */}
+        {!isCheckedIn && (
+          <View style={s.verificationCard}>
+            <View style={s.verificationHeader}>
               <View>
-                <Text style={s.detailValue}>08:00 AM - 08:00 PM</Text>
-                <Text style={s.detailLabel}>Shift Timing</Text>
+                <Text style={s.verificationTitle}>Identity Verification</Text>
+                <Text style={s.verificationSubTitle}>पहचान सत्यापन</Text>
+              </View>
+              <View style={s.requiredBadge}>
+                <Text style={s.requiredBadgeText}>REQUIRED</Text>
+              </View>
+            </View>
+            
+            <View style={s.cameraPreviewContainer}>
+              <View style={s.cameraPreviewFrame}>
+                {selfieUri ? (
+                  <Image source={{ uri: selfieUri }} style={s.capturedSelfie} />
+                ) : (
+                  <View style={s.placeholderIconFrame}>
+                    <Text style={s.placeholderText}>Identity Preview</Text>
+                  </View>
+                )}
+              </View>
+              
+              <TouchableOpacity 
+                activeOpacity={0.85} 
+                style={s.cameraCaptureBtn} 
+                onPress={handleTakeSelfie}
+              >
+                <MaterialIcons name="photo-camera" size={24} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.previewInfoRow}>
+              <View style={{ flex: 1, alignItems: 'center', marginBottom: 12 }}>
+                <Text style={s.selfieRequiredText}>Live Selfie Required / लाइव सेल्फी आवश्यक</Text>
+                <Text style={s.selfieInstructText}>
+                  Please ensure your face is clearly visible in well-lit conditions. / कृपया सुनिश्चित करें कि आपका चेहरा अच्छी रोशनी में स्पष्ट रूप से दिखाई दे रहा है।
+                </Text>
               </View>
             </View>
 
-            <View style={s.timerCol}>
-              <Text style={s.timerValue}>{formatDuration(secondsWorked)}</Text>
-              <Text style={s.detailLabel}>Working Duration</Text>
+            <View style={s.divider} />
+
+            <View style={s.verificationDetailsRow}>
+              <View style={s.detailCol}>
+                <View style={s.detailIconWrapper}>
+                  <MaterialIcons name="schedule" size={18} color={Colors.primary} />
+                </View>
+                <View>
+                  <Text style={s.detailValue}>
+                    {siteDetails 
+                      ? (user?.shift_type === 'night'
+                        ? `${siteDetails.night_shift_start || '08:00 PM'} - ${siteDetails.night_shift_end || '08:00 AM'}`
+                        : `${siteDetails.day_shift_start || '08:00 AM'} - ${siteDetails.day_shift_end || '08:00 PM'}`)
+                      : '08:00 AM - 08:00 PM'
+                    }
+                  </Text>
+                  <Text style={s.detailLabel}>Shift Timing</Text>
+                </View>
+              </View>
+
+              <View style={s.timerCol}>
+                <Text style={[
+                  s.timerValue,
+                  { color: secondsWorked / 3600 >= (siteDetails?.min_hours_present ?? 7)
+                    ? '#10B981'
+                    : secondsWorked / 3600 >= (siteDetails?.min_hours_half_day ?? 4)
+                      ? '#F59E0B'
+                      : '#EF4444'
+                  }
+                ]}>
+                  {formatDuration(secondsWorked)}
+                </Text>
+                <Text style={s.detailLabel}>Working Duration</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
+
+        {/* ─── Shift Information (Check-out Only) ─── */}
+        {isCheckedIn && (
+          <View style={s.verificationCard}>
+            <View style={s.verificationHeader}>
+              <View>
+                <Text style={s.verificationTitle}>Shift Status</Text>
+                <Text style={s.verificationSubTitle}>शिफ्ट स्थिति</Text>
+              </View>
+            </View>
+            
+            <View style={s.verificationDetailsRow}>
+              <View style={s.detailCol}>
+                <View style={s.detailIconWrapper}>
+                  <MaterialIcons name="schedule" size={18} color={Colors.primary} />
+                </View>
+                <View>
+                  <Text style={s.detailValue}>
+                    {siteDetails 
+                      ? (user?.shift_type === 'night'
+                        ? `${siteDetails.night_shift_start || '08:00 PM'} - ${siteDetails.night_shift_end || '08:00 AM'}`
+                        : `${siteDetails.day_shift_start || '08:00 AM'} - ${siteDetails.day_shift_end || '08:00 PM'}`)
+                      : '08:00 AM - 08:00 PM'
+                    }
+                  </Text>
+                  <Text style={s.detailLabel}>Shift Timing</Text>
+                </View>
+              </View>
+
+              <View style={s.timerCol}>
+                <Text style={[
+                  s.timerValue,
+                  { color: secondsWorked / 3600 >= (siteDetails?.min_hours_present ?? 7)
+                    ? '#10B981'
+                    : secondsWorked / 3600 >= (siteDetails?.min_hours_half_day ?? 4)
+                      ? '#F59E0B'
+                      : '#EF4444'
+                  }
+                ]}>
+                  {formatDuration(secondsWorked)}
+                </Text>
+                <Text style={s.detailLabel}>
+                  {secondsWorked / 3600 >= (siteDetails?.min_hours_present ?? 7)
+                    ? '✅ Full Day'
+                    : secondsWorked / 3600 >= (siteDetails?.min_hours_half_day ?? 4)
+                      ? '🔶 Half Day so far'
+                      : '⏳ Insufficient'
+                  }
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* ─── Action Button ─── */}
         <View style={s.actionSection}>
@@ -586,10 +713,11 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
             activeOpacity={0.9}
             style={[
               s.checkInBtn,
-              (!isInside || !selfieUri) && s.checkInBtnDisabled,
+              isCheckedIn && { backgroundColor: '#B02021' },
+              (!isInside || (!isCheckedIn && !selfieUri)) && s.checkInBtnDisabled,
             ]}
             onPress={handleCheckInAction}
-            disabled={submitting || uploadingFile || !isInside || !selfieUri}
+            disabled={submitting || uploadingFile || !isInside || (!isCheckedIn && !selfieUri)}
           >
             {submitting || uploadingFile ? (
               <View style={{ alignItems: 'center' }}>
@@ -610,7 +738,10 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
           <View style={s.noteContainer}>
             <MaterialIcons name="gpp-maybe" size={14} color={Colors.onSurfaceVariant} style={{ marginTop: 2 }} />
             <Text style={s.actionNote}>
-              Action will be logged with GPS coordinates / कार्रवाई GPS निर्देशांक के साथ लॉग की जाएगी
+              {isCheckedIn
+                ? 'Geofence required for check-out / चेक-आउट के लिए सीमा आवश्यक'
+                : 'Action will be logged with GPS coordinates / कार्रवाई GPS निर्देशांक के साथ लॉग की जाएगी'
+              }
             </Text>
           </View>
         </View>
@@ -619,7 +750,7 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
       </ScrollView>
 
       {/* ═══ BottomNavBar ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
       {navItems.map((item) => {
         const isActive = item.key === 'attendance';
         return (
@@ -1111,5 +1242,38 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  lateBadgeContainer: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  lateBadge: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    elevation: 2,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  lateBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+    flex: 1,
+  },
+  lateBadgeSubText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    width: '100%',
+    marginTop: 4,
   },
 });

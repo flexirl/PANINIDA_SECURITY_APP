@@ -546,7 +546,7 @@ export default function CandidateListScreen({ navigation }: CandidateListScreenP
       </Animated.View>
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         <TouchableOpacity
           style={s.navItem}
           activeOpacity={0.7}

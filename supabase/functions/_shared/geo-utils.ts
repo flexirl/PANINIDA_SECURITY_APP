@@ -67,12 +67,14 @@ export function isValidCoordinates(lat: number, lon: number): boolean {
  * Check if current time is within a shift window (with tolerance).
  * @param shiftStart - Shift start time as "HH:MM" string
  * @param shiftEnd - Shift end time as "HH:MM" string
- * @param toleranceMinutes - Allowed tolerance in minutes (default 30)
+ * @param toleranceMinutes - Allowed tolerance in minutes for early check-in (default 30)
+ * @param lateThresholdMinutes - Minutes after shift start before marked "late" (default 120 = 2 hours)
  */
 export function isWithinShiftTiming(
   shiftStart: string,
   shiftEnd: string,
-  toleranceMinutes: number = 30
+  toleranceMinutes: number = 30,
+  lateThresholdMinutes: number = 120
 ): { withinShift: boolean; isLate: boolean; minutesOff: number } {
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -84,7 +86,7 @@ export function isWithinShiftTiming(
   const shiftEndMinutes = endH * 60 + endM;
 
   const earlyWindow = shiftStartMinutes - toleranceMinutes;
-  const lateWindow = shiftStartMinutes + toleranceMinutes;
+  const lateWindow = shiftStartMinutes + lateThresholdMinutes;
 
   // Handle overnight shifts (e.g., 20:00 - 08:00)
   if (shiftEndMinutes < shiftStartMinutes) {
@@ -108,3 +110,34 @@ export function isWithinShiftTiming(
 
   return { withinShift, isLate, minutesOff };
 }
+
+/**
+ * Calculate the final attendance status based on hours worked and whether check-in was late.
+ * 
+ * Status logic:
+ *   - hours < minHoursHalfDay       → 'absent'
+ *   - minHoursHalfDay ≤ hours < minHoursPresent → 'half_day'
+ *   - hours ≥ minHoursPresent AND was late       → 'present_late'
+ *   - hours ≥ minHoursPresent AND was on-time    → 'present'
+ *
+ * @param hoursWorked - Total hours worked (check_out - check_in)
+ * @param wasLateCheckIn - Whether the check-in was marked as late
+ * @param minHoursPresent - Minimum hours for 'present' status (default 7)
+ * @param minHoursHalfDay - Minimum hours for 'half_day' status (default 4)
+ */
+export function calculateAttendanceStatus(
+  hoursWorked: number,
+  wasLateCheckIn: boolean,
+  minHoursPresent: number = 7,
+  minHoursHalfDay: number = 4
+): 'present' | 'present_late' | 'half_day' | 'absent' {
+  if (hoursWorked < minHoursHalfDay) {
+    return 'absent';
+  }
+  if (hoursWorked < minHoursPresent) {
+    return 'half_day';
+  }
+  // Worked enough hours
+  return wasLateCheckIn ? 'present_late' : 'present';
+}
+

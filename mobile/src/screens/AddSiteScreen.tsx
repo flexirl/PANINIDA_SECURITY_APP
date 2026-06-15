@@ -23,6 +23,7 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import * as siteService from '../api/siteService';
 import { useLocation } from '../hooks/useLocation';
+import { supabase } from '../api/supabase';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SLIDER_WIDTH = SCREEN_WIDTH - 32 - 32; // Screen edge padding + card internal padding
@@ -39,6 +40,7 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
   // ─── State Variables ────────────────────────────────
   const [siteName, setSiteName] = useState('');
   const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
   const [address, setAddress] = useState('');
   const [radius, setRadius] = useState(100); // meters
   const [contactName, setContactName] = useState('');
@@ -294,6 +296,92 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
     '10:00 PM',
   ];
 
+  // ─── Auto-assign client phone to site ─────────────
+  const assignClientPhoneToSite = async (phone: string, siteId: string, name?: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    // 1. Check if a user with this phone already exists
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id, role')
+      .eq('phone', cleanPhone)
+      .maybeSingle();
+
+    let userId: string;
+
+    if (existingUser) {
+      userId = existingUser.id;
+      // Update role to client_user if not already
+      if (existingUser.role !== 'client_user') {
+        await supabase
+          .from('users')
+          .update({ role: 'client_user' })
+          .eq('id', existingUser.id);
+      }
+    } else {
+      // Create new user record with client_user role
+      const { data: newUser, error: userError } = await supabase
+        .from('users')
+        .insert({
+          phone: cleanPhone,
+          role: 'client_user',
+          name: name || `Client ${cleanPhone.slice(-4)}`,
+          is_active: true,
+        })
+        .select('id')
+        .single();
+
+      if (userError || !newUser) {
+        throw new Error(userError?.message || 'Failed to create client user record');
+      }
+      userId = newUser.id;
+    }
+
+    // 2. Check if client_users record already exists for this user+site
+    const { data: existingClientUser } = await supabase
+      .from('client_users')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('site_id', siteId)
+      .maybeSingle();
+
+    if (!existingClientUser) {
+      // 3. Create client_users record linking user → site
+      const { error: clientError } = await supabase
+        .from('client_users')
+        .insert({
+          user_id: userId,
+          site_id: siteId,
+          client_role: 'society_president',
+          is_active: true,
+        });
+
+      if (clientError) {
+        throw new Error(clientError.message || 'Failed to link client to site');
+      }
+    }
+
+    // 4. Also add to role_assignments table for admin visibility
+    const { data: existingAssignment } = await supabase
+      .from('role_assignments')
+      .select('id')
+      .eq('phone', cleanPhone)
+      .eq('assigned_role', 'client_user')
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!existingAssignment) {
+      await supabase
+        .from('role_assignments')
+        .insert({
+          phone: cleanPhone,
+          assigned_role: 'client_user',
+          label: name || `Client ${cleanPhone.slice(-4)}`,
+          is_active: true,
+        });
+    }
+  };
+
   // ─── Form Submission Logic ─────────────────────────
   const handleSave = async () => {
     if (!siteName.trim()) {
@@ -306,6 +394,10 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
     }
     if (!address.trim()) {
       Alert.alert('Required Field', 'Please enter a Site Address.');
+      return;
+    }
+    if (clientPhone.length > 0 && clientPhone.length !== 10) {
+      Alert.alert('Invalid Phone', 'Client phone must be a valid 10-digit number.');
       return;
     }
 
@@ -330,11 +422,26 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
         day_shift_end: dayEnd,
         night_shift_start: nightStart,
         night_shift_end: nightEnd,
-        contact_person: contactName || 'N/A',
-        contact_phone: contactPhone ? `+91${contactPhone}` : 'N/A',
+        contact_person: contactName.trim() || clientName.trim() || 'N/A',
+        contact_phone: contactPhone ? `+91${contactPhone}` : (clientPhone.length === 10 ? `+91${clientPhone}` : 'N/A'),
       };
 
-      await siteService.createSite(sitePayload);
+      const createdSite = await siteService.createSite(sitePayload);
+
+      // Auto-assign client phone as client_user for this site
+      if (clientPhone.length === 10 && createdSite?.id) {
+        try {
+          await assignClientPhoneToSite(clientPhone, createdSite.id, clientName);
+          console.log('[AddSite] Client phone auto-assigned to site:', clientPhone);
+        } catch (clientErr: any) {
+          console.warn('[AddSite] Client auto-assignment failed (non-fatal):', clientErr?.message);
+          // Non-fatal: site was created, just warn about client assignment failure
+          Alert.alert(
+            'Site Created',
+            `Site saved successfully, but client phone assignment failed: ${clientErr?.message || 'Unknown error'}. You can assign the client manually from Settings → Role Management.`
+          );
+        }
+      }
 
       setSaveSuccess(true);
       Animated.parallel([
@@ -443,6 +550,31 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
                 value={clientName}
                 onChangeText={setClientName}
               />
+            </View>
+
+            <View style={s.inputGroup}>
+              <Text style={s.label}>Client Phone <Text style={{ fontSize: 10, color: Colors.outline, fontWeight: '400' }}>(auto-assigned as Client Portal user)</Text></Text>
+              <View style={s.phoneInputWrapper}>
+                <Text style={s.phonePrefix}>+91</Text>
+                <TextInput
+                  style={s.phoneInput}
+                  placeholder="Client's 10-digit number"
+                  placeholderTextColor={Colors.outline}
+                  keyboardType="numeric"
+                  value={clientPhone}
+                  onChangeText={(text) => setClientPhone(text.replace(/[^0-9]/g, ''))}
+                  maxLength={10}
+                />
+              </View>
+              {clientPhone.length > 0 && clientPhone.length < 10 && (
+                <Text style={{ fontSize: 11, color: Colors.error, marginTop: 4 }}>Enter complete 10-digit number</Text>
+              )}
+              {clientPhone.length === 10 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+                  <MaterialIcons name="check-circle" size={14} color={Colors.successGreen} />
+                  <Text style={{ fontSize: 11, color: Colors.successGreen, fontWeight: '600' }}>This number will get Client Portal access for this site</Text>
+                </View>
+              )}
             </View>
 
             <View style={s.inputGroup}>

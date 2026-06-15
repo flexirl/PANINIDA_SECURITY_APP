@@ -198,17 +198,25 @@ Deno.serve(async (req: Request) => {
     });
 
     // ── 9. Generate access URL ──
+    // For public buckets: use the permanent public URL
+    // For private buckets: generate a signed URL for immediate use,
+    //   but store a persistent storage:// path reference in the DB
     let url: string;
+    let persistentUrl: string; // What gets saved to DB (never expires)
     if (config.isPublic) {
       const { data: publicUrlData } = supabase.storage
         .from(config.bucket)
         .getPublicUrl(filePath);
       url = publicUrlData.publicUrl;
+      persistentUrl = url; // Public URLs never expire
     } else {
+      // Generate signed URL for the immediate API response
       const { data: signedUrlData } = await supabase.storage
         .from(config.bucket)
         .createSignedUrl(filePath, 3600); // 1 hour
       url = signedUrlData?.signedUrl || "";
+      // Store a persistent path reference (client resolves on-demand)
+      persistentUrl = `storage://${config.bucket}/${filePath}`;
     }
 
     // ── 10. If this is a profile photo, also update personnel records ──
@@ -227,6 +235,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 11. If this is a document upload, also upsert workforce_documents ──
+    // Use persistentUrl so document URLs never expire in the DB
     if (category === "documents" && personnelId && documentType) {
       await supabase
         .from("workforce_documents")
@@ -234,7 +243,7 @@ Deno.serve(async (req: Request) => {
           {
             personnel_id: personnelId,
             document_type: documentType,
-            file_url: url,
+            file_url: persistentUrl,
             uploaded_by: user.id,
             verified: false,
             verified_by: null,

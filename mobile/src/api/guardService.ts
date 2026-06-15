@@ -22,6 +22,8 @@ export interface GuardProfile {
   bank_account_number?: string;
   bank_ifsc?: string;
   bank_name?: string;
+  gender?: string;
+  date_of_birth?: string;
   employment_status: 'active' | 'inactive' | 'terminated';
   created_at?: string;
   // Document URIs (saved from Add Guard form)
@@ -178,7 +180,10 @@ export async function createGuard(profile: Omit<GuardProfile, 'id' | 'user_id'>)
       bank_name: profile.bank_name || null,
       aadhaar_number: profile.aadhaar_number || null,
       pan_number: profile.pan_number || null,
-      address: profile.address || null
+      address: profile.address || null,
+      gender: profile.gender || 'male',
+      date_of_birth: profile.date_of_birth || null,
+      police_verification: profile.police_verification || false
     })
     .select()
     .single();
@@ -210,7 +215,9 @@ export async function createGuard(profile: Omit<GuardProfile, 'id' | 'user_id'>)
       bank_account_number: profile.bank_account_number || null,
       bank_ifsc: profile.bank_ifsc || null,
       bank_name: profile.bank_name || null,
-      employment_status: 'active'
+      employment_status: 'active',
+      gender: profile.gender || 'male',
+      date_of_birth: profile.date_of_birth || null
     })
     .select()
     .single();
@@ -242,13 +249,14 @@ export async function updateGuard(id: string, updates: Partial<GuardProfile>): P
     'aadhaar_number', 'pan_number', 'address', 'photo_url', 'height', 'weight',
     'education', 'police_verification', 'base_salary', 'joining_date', 'shift_type',
     'emergency_contact_name', 'emergency_contact_phone', 'bank_account_number',
-    'bank_ifsc', 'bank_name', 'employment_status'
+    'bank_ifsc', 'bank_name', 'employment_status', 'gender', 'date_of_birth'
   ];
 
   const allowedWpFields = [
     'name', 'phone', 'photo_url', 'base_salary', 'joining_date', 'shift_type',
     'employment_status', 'emergency_contact_name', 'emergency_contact_phone',
-    'bank_account_number', 'bank_ifsc', 'bank_name', 'aadhaar_number', 'pan_number', 'address'
+    'bank_account_number', 'bank_ifsc', 'bank_name', 'aadhaar_number', 'pan_number', 'address',
+    'gender', 'date_of_birth', 'police_verification'
   ];
 
   allowedGuardFields.forEach(f => {

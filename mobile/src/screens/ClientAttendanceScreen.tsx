@@ -415,15 +415,6 @@ export default function ClientAttendanceScreen({ navigation }: any) {
           }
         />
       )}
-
-      {/* FAB for Reports, links to Analytics Dashboard */}
-      <TouchableOpacity
-        style={s.fabButton}
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('AnalyticsDashboard')}
-      >
-        <MaterialIcons name="analytics" size={24} color={Colors.onSecondary} />
-      </TouchableOpacity>
     </View>
   );
 }

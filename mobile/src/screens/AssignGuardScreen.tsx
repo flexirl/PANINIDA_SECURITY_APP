@@ -19,8 +19,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
-import * as guardService from '../api/guardService';
+import * as workforcePersonnelService from '../api/workforcePersonnelService';
+import * as siteAssignmentService from '../api/siteAssignmentService';
 import * as siteService from '../api/siteService';
+import { supabase } from '../api/supabase';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -29,13 +31,15 @@ interface AssignGuardScreenProps {
   route?: any;
 }
 
-interface Guard {
+interface Personnel {
   id: string;
   name: string;
   phone: string;
-  status: 'Available' | 'On Buffer';
+  status: 'Available' | 'Deployed';
   avatar?: string;
   initials: string;
+  categoryName?: string;
+  currentSiteName?: string;
 }
 
 export default function AssignGuardScreen({ navigation, route }: AssignGuardScreenProps) {
@@ -48,14 +52,14 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
   const [loading, setLoading] = useState(true);
   const [sites, setSites] = useState<siteService.SiteProfile[]>([]);
   const [selectedSite, setSelectedSite] = useState<siteService.SiteProfile | null>(null);
-  const [availableGuards, setAvailableGuards] = useState<Guard[]>([]);
+  const [allPersonnel, setAllPersonnel] = useState<Personnel[]>([]);
   const [selectedShift, setSelectedShift] = useState<'day' | 'night'>('day');
   const [searchQuery, setSearchQuery] = useState('');
   const [siteSearchQuery, setSiteSearchQuery] = useState('');
-  const [selectedGuardId, setSelectedGuardId] = useState<string | null>(null);
+  const [selectedPersonnelId, setSelectedPersonnelId] = useState<string | null>(null);
 
   const [availableCount, setAvailableCount] = useState(0);
-  const [bufferCount, setBufferCount] = useState(0);
+  const [deployedCount, setDeployedCount] = useState(0);
 
   // Animations
   const saveBtnScale = useRef(new Animated.Value(1)).current;
@@ -65,9 +69,8 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
   const loadData = async () => {
     try {
       setLoading(true);
-      const [allGuards, allAssignments, allSites] = await Promise.all([
-        guardService.getGuards({ status: 'active' }),
-        siteService.getAssignments(),
+      const [allPersonnelData, allSites] = await Promise.all([
+        workforcePersonnelService.getPersonnel({ status: 'active' }),
         siteService.getSites(),
       ]);
 
@@ -85,39 +88,53 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
         setSelectedSite(null);
       }
 
-      // Create a set of guard IDs that have active assignments
-      const assignedGuardIds = new Set(
-        allAssignments
-          .filter((a) => a.is_active)
-          .map((a) => a.guard_id)
-      );
+      // Fetch all active site_assignments to know who is deployed where
+      const { data: allAssignments } = await supabase
+        .from('site_assignments')
+        .select('personnel_id, site_id, sites(site_name)')
+        .eq('is_active', true);
 
-      // Filter available guards (those who are active but do NOT have active assignments)
-      const mappedGuards: Guard[] = allGuards
-        .filter((g) => !assignedGuardIds.has(g.id))
-        .map((g) => {
-          const nameParts = g.name.trim().split(' ');
-          const initials = nameParts.length > 1
-            ? (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
-            : nameParts[0].substring(0, 2).toUpperCase();
-
-          return {
-            id: g.id,
-            name: g.name,
-            phone: g.phone.startsWith('+91') ? g.phone : `+91 ${g.phone}`,
-            status: 'Available' as const,
-            avatar: g.photo_url || undefined,
-            initials,
-          };
+      const assignmentMap = new Map<string, { siteId: string; siteName: string }>();
+      (allAssignments || []).forEach((a: any) => {
+        assignmentMap.set(a.personnel_id, {
+          siteId: a.site_id,
+          siteName: a.sites?.site_name || 'Another Site',
         });
+      });
 
-      setAvailableGuards(mappedGuards);
-      setAvailableCount(mappedGuards.length);
-      setBufferCount(allGuards.length - mappedGuards.length); // buffer represents deployed guards
+      // Map ALL active personnel (deployed or not)
+      let avail = 0;
+      let deployed = 0;
+      const mappedPersonnel: Personnel[] = allPersonnelData.map((p: any) => {
+        const nameParts = (p.name || '').trim().split(' ');
+        const initials = nameParts.length > 1
+          ? (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
+          : (nameParts[0] || 'XX').substring(0, 2).toUpperCase();
+
+        const assignment = assignmentMap.get(p.id);
+        const isDeployed = !!assignment;
+        if (isDeployed) deployed++;
+        else avail++;
+
+        return {
+          id: p.id,
+          name: p.name || 'Unknown',
+          phone: (p.phone || '').startsWith('+91') ? p.phone : `+91 ${p.phone || ''}`,
+          status: isDeployed ? 'Deployed' as const : 'Available' as const,
+          avatar: p.photo_url || undefined,
+          initials,
+          categoryName: p.category?.name || '',
+          currentSiteName: assignment?.siteName || undefined,
+        };
+      });
+
+      setAllPersonnel(mappedPersonnel);
+      setAvailableCount(avail);
+      setDeployedCount(deployed);
 
     } catch (err) {
       console.error('Error loading data:', err);
-      Alert.alert('Load Error', 'Failed to retrieve available security force or sites.');
+      Alert.alert('Load Error', 'Failed to retrieve personnel or sites.');
     } finally {
       setLoading(false);
     }
@@ -145,13 +162,13 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
   }, []);
 
   const handleAssign = () => {
-    if (!selectedGuardId) {
-      Alert.alert('Selection Required', 'Please select a guard to assign.');
+    if (!selectedPersonnelId) {
+      Alert.alert('Selection Required', 'Please select a personnel to assign.');
       return;
     }
 
-    const selectedGuard = availableGuards.find((g) => g.id === selectedGuardId);
-    if (!selectedGuard) return;
+    const selectedPerson = allPersonnel.find((p) => p.id === selectedPersonnelId);
+    if (!selectedPerson) return;
 
     // Haptic bounce
     Animated.sequence([
@@ -167,13 +184,20 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
       }),
     ]).start();
 
+    // Build confirmation message with reassignment warning
+    let confirmMessage = `Assign ${selectedPerson.name} to ${selectedSite?.site_name} for the ${selectedShift.toUpperCase()} shift?`;
+    if (selectedPerson.status === 'Deployed' && selectedPerson.currentSiteName) {
+      confirmMessage = `⚠️ ${selectedPerson.name} is currently deployed at "${selectedPerson.currentSiteName}".\n\nReassigning will remove them from that site.\n\nProceed with assignment to ${selectedSite?.site_name} (${selectedShift.toUpperCase()} shift)?`;
+    }
+
     Alert.alert(
-      'Confirm Assignment',
-      `Assign ${selectedGuard.name} to ${selectedSite?.site_name} for the ${selectedShift.toUpperCase()} shift?`,
+      selectedPerson.status === 'Deployed' ? 'Reassignment Warning' : 'Confirm Assignment',
+      confirmMessage,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Confirm',
+          text: selectedPerson.status === 'Deployed' ? 'Reassign' : 'Confirm',
+          style: selectedPerson.status === 'Deployed' ? 'destructive' : 'default',
           onPress: async () => {
             if (!selectedSite?.id) {
               Alert.alert('Error', 'Missing Site Reference.');
@@ -182,15 +206,15 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
 
             setLoading(true);
             try {
-              await siteService.assignGuard({
-                guard_id: selectedGuard.id,
+              await siteAssignmentService.assignPersonnelToSite({
+                personnel_id: selectedPerson.id,
                 site_id: selectedSite.id,
                 shift_type: selectedShift,
               });
 
               Alert.alert(
                 'Success',
-                `✅ ${selectedGuard.name} successfully assigned to ${selectedSite.site_name}.`,
+                `✅ ${selectedPerson.name} successfully assigned to ${selectedSite.site_name}.`,
                 [
                   {
                     text: 'OK',
@@ -208,13 +232,14 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
     );
   };
 
-  // Filter Guards List
-  const filteredGuards = availableGuards.filter((guard) => {
+  // Filter Personnel List
+  const filteredPersonnel = allPersonnel.filter((person) => {
     const query = searchQuery.toLowerCase();
     return (
-      guard.name.toLowerCase().includes(query) ||
-      guard.id.toLowerCase().includes(query) ||
-      guard.phone.includes(query)
+      person.name.toLowerCase().includes(query) ||
+      person.id.toLowerCase().includes(query) ||
+      person.phone.includes(query) ||
+      (person.categoryName || '').toLowerCase().includes(query)
     );
   });
 
@@ -234,7 +259,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
         <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.outline, fontWeight: '600', fontSize: 14 }}>
-          Analyzing guard deployments...
+          Loading personnel roster...
         </Text>
       </View>
     );
@@ -254,7 +279,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
           >
             <MaterialIcons name="arrow-back" size={24} color={Colors.onPrimary} />
           </TouchableOpacity>
-          <Text style={s.topBarTitle}>Assign Guard</Text>
+          <Text style={s.topBarTitle}>Assign Personnel</Text>
         </View>
         <View style={s.topBarRight}>
           <TouchableOpacity
@@ -299,7 +324,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                   activeOpacity={0.8}
                   onPress={() => {
                     setSelectedSite(site);
-                    setSelectedGuardId(null);
+                    setSelectedPersonnelId(null);
                   }}
                   style={s.siteRow}
                 >
@@ -352,7 +377,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                         activeOpacity={0.7}
                         onPress={() => {
                           setSelectedSite(null);
-                          setSelectedGuardId(null);
+                          setSelectedPersonnelId(null);
                         }}
                         style={s.changeSiteBtn}
                       >
@@ -451,7 +476,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                   </View>
                   <View style={[s.summaryItem, s.lastSummaryItem]}>
                     <Text style={s.summaryLabel}>Deployed</Text>
-                    <Text style={[s.summaryCount, { color: Colors.primary }]}>{bufferCount}</Text>
+                    <Text style={[s.summaryCount, { color: Colors.primary }]}>{deployedCount}</Text>
                   </View>
                 </View>
               </View>
@@ -465,7 +490,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                   <MaterialIcons name="search" size={20} color={Colors.outline} style={s.searchIcon} />
                   <TextInput
                     style={s.searchInput}
-                    placeholder="Search guards..."
+                    placeholder="Search personnel by name or category..."
                     placeholderTextColor={Colors.outline}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -479,21 +504,21 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
 
                 {/* Columns Headers */}
                 <View style={s.columnHeaders}>
-                  <Text style={[s.columnHeaderText, { width: '50%' }]}>Guard Profile</Text>
-                  <Text style={[s.columnHeaderText, { width: '50%', textAlign: 'right' }]}>Phone / Status</Text>
+                  <Text style={[s.columnHeaderText, { width: '50%' }]}>Personnel Profile</Text>
+                  <Text style={[s.columnHeaderText, { width: '50%', textAlign: 'right' }]}>Category / Status</Text>
                 </View>
               </View>
 
               {/* Scrollable list */}
               <View style={s.guardsListContainer}>
-                {filteredGuards.map((guard) => {
-                  const isSelected = selectedGuardId === guard.id;
-                  const isAvailable = guard.status === 'Available';
+                {filteredPersonnel.map((person) => {
+                  const isSelected = selectedPersonnelId === person.id;
+                  const isAvailable = person.status === 'Available';
                   return (
                     <TouchableOpacity
-                      key={guard.id}
+                      key={person.id}
                       activeOpacity={0.8}
-                      onPress={() => setSelectedGuardId(guard.id)}
+                      onPress={() => setSelectedPersonnelId(person.id)}
                       style={[
                         s.guardRow,
                         isSelected && s.guardRowSelected,
@@ -510,28 +535,30 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
 
                         <View style={s.guardProfileWrapper}>
                           <View style={s.guardAvatarWrapper}>
-                            {guard.avatar ? (
-                              <Image source={{ uri: guard.avatar }} style={s.guardAvatar} />
+                            {person.avatar ? (
+                              <Image source={{ uri: person.avatar }} style={s.guardAvatar} />
                             ) : (
                               <View style={{ flex: 1, backgroundColor: Colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{guard.initials}</Text>
+                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{person.initials}</Text>
                               </View>
                             )}
                           </View>
                           <View style={s.guardInfoTexts}>
                             <Text style={s.guardName} numberOfLines={1}>
-                              {guard.name}
+                              {person.name}
                             </Text>
-                            <Text style={s.guardId}>ID: {guard.id.slice(0, 4).toUpperCase()}</Text>
+                            <Text style={s.guardId}>{person.categoryName || 'Personnel'}</Text>
                           </View>
                         </View>
                       </View>
 
-                      {/* Phone & Status Badge */}
+                      {/* Status Badge + Current Site */}
                       <View style={s.guardRowRight}>
-                        <Text style={s.guardPhone} numberOfLines={1}>
-                          {guard.phone.replace('+91 ', '')}
-                        </Text>
+                        {person.currentSiteName && (
+                          <Text style={[s.guardPhone, { fontSize: 10, color: Colors.outline }]} numberOfLines={1}>
+                            @ {person.currentSiteName}
+                          </Text>
+                        )}
                         <View style={[
                           s.statusBadge,
                           isAvailable ? s.statusBadgeAvail : s.statusBadgeBuffer
@@ -540,7 +567,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                             s.statusBadgeText,
                             isAvailable ? s.statusBadgeTextAvail : s.statusBadgeTextBuffer
                           ]}>
-                            {guard.status}
+                            {person.status}
                           </Text>
                         </View>
                       </View>
@@ -548,10 +575,10 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                   );
                 })}
 
-                {filteredGuards.length === 0 && (
+                {filteredPersonnel.length === 0 && (
                   <View style={s.emptyState}>
                     <MaterialIcons name="search-off" size={48} color={Colors.outlineVariant} />
-                    <Text style={s.emptyTitle}>No available guards found</Text>
+                    <Text style={s.emptyTitle}>No personnel found</Text>
                   </View>
                 )}
               </View>
@@ -570,7 +597,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
               style={s.assignBtn}
             >
               <MaterialIcons name="person-add" size={22} color="#FFFFFF" />
-              <Text style={s.assignBtnText}>Assign Selected Guard</Text>
+              <Text style={s.assignBtnText}>Assign Selected Personnel</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>

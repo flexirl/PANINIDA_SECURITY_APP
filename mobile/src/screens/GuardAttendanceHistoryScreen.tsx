@@ -129,6 +129,7 @@ export default function GuardAttendanceHistoryScreen({ navigation }: { navigatio
       const logDate = new Date(log.attendance_date);
       if (logDate.getFullYear() === calendarYear && logDate.getMonth() === calendarMonth) {
         if (log.status === 'present') presents++;
+        else if (log.status === 'present_late') { presents++; lates++; }
         else if (log.status === 'absent') absents++;
         else if (log.status === 'late' || log.status === 'half_day') lates++;
       }
@@ -202,7 +203,7 @@ export default function GuardAttendanceHistoryScreen({ navigation }: { navigatio
 
     if (log) {
       if (log.status === 'present') return Colors.successGreen;
-      if (log.status === 'late' || log.status === 'half_day') return '#D97706';
+      if (log.status === 'late' || log.status === 'half_day' || log.status === 'present_late') return '#D97706';
       return Colors.secondary;
     }
 
@@ -242,11 +243,21 @@ export default function GuardAttendanceHistoryScreen({ navigation }: { navigatio
           bg = 'rgba(16, 185, 129, 0.1)';
           color = Colors.successGreen;
           duration = log.hours_worked ? `${Math.floor(log.hours_worked)}h ${Math.round((log.hours_worked % 1) * 60).toString().padStart(2, '0')}m` : '12h 00m';
+        } else if (log.status === 'present_late') {
+          label = 'Present (Late)';
+          bg = 'rgba(245, 158, 11, 0.1)';
+          color = '#F59E0B';
+          duration = log.hours_worked ? `${Math.floor(log.hours_worked)}h ${Math.round((log.hours_worked % 1) * 60).toString().padStart(2, '0')}m` : '12h 00m';
         } else if (log.status === 'late') {
           label = 'Late';
           bg = 'rgba(217, 119, 6, 0.1)';
           color = '#D97706';
           duration = log.hours_worked ? `${Math.floor(log.hours_worked)}h ${Math.round((log.hours_worked % 1) * 60).toString().padStart(2, '0')}m` : '10h 00m';
+        } else if (log.status === 'half_day') {
+          label = 'Half Day';
+          bg = 'rgba(217, 119, 6, 0.1)';
+          color = '#D97706';
+          duration = log.hours_worked ? `${Math.floor(log.hours_worked)}h ${Math.round((log.hours_worked % 1) * 60).toString().padStart(2, '0')}m` : '05h 00m';
         } else {
           label = 'Absent';
           bg = 'rgba(178, 43, 29, 0.1)';
@@ -323,8 +334,8 @@ export default function GuardAttendanceHistoryScreen({ navigation }: { navigatio
   };
 
   const navItems = [
-    { key: 'home', icon: 'home' as const, label: 'Home' },
-    { key: 'attendance', icon: 'calendar-today' as const, label: 'Attendance' },
+    { key: 'home', icon: 'dashboard' as const, label: 'Home' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
     { key: 'salary', icon: 'payments' as const, label: 'Salary' },
     { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
@@ -518,7 +529,7 @@ export default function GuardAttendanceHistoryScreen({ navigation }: { navigatio
       </ScrollView>
 
       {/* ═══ Bottom Navigation Bar ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
       {navItems.map((item) => {
         const isActive = item.key === 'attendance';
         return (

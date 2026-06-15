@@ -72,7 +72,7 @@ const MAJOR_GROUPS: MajorGroup[] = [
   },
   {
     id: 'helpers',
-    name: 'Helpers / Housekeeping',
+    name: 'Helpers',
     icon: 'cleaning-services',
     color: '#E65100',
     bgColor: 'rgba(230,81,0,0.08)',

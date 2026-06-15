@@ -137,9 +137,9 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   // Navigation Items for Guard
   const navItemsGuard = [
     { key: 'home', icon: 'dashboard' as const, label: 'Home' },
-    { key: 'attendance', icon: 'verified-user' as const, label: 'Attendance' },
-    { key: 'salary', icon: 'account-balance-wallet' as const, label: 'Salary' },
-    { key: 'profile', icon: 'account-circle' as const, label: 'Profile' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
+    { key: 'salary', icon: 'payments' as const, label: 'Salary' },
+    { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
 
   const handleNavPressGuard = (key: string) => {
@@ -153,6 +153,25 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
       navigation.navigate('GuardProfile');
     }
   };
+
+  if (user?.role === 'manager') {
+    return (
+      <View style={[s.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#faf9fd" />
+        <MaterialIcons name="security" size={80} color="#BA1A1A" />
+        <Text style={{ fontSize: 22, fontWeight: '700', color: '#1A1C2B', marginTop: 16, marginBottom: 8 }}>Access Denied</Text>
+        <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22, paddingHorizontal: 20, marginBottom: 24 }}>
+          Settings are restricted to Administrator roles only.
+        </Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: '#4F46E5', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12 }} 
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   // ══════════════════════════════════════════════════
   // RENDER GUARD / PERSONNEL VERSION OF SETTINGS SCREEN
@@ -173,10 +192,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
               >
                 <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
               </TouchableOpacity>
-              <View style={s.brandGroup}>
-                <MaterialIcons name="security" size={26} color={Colors.primary} style={s.brandIcon} />
-                <Text style={s.brandText}>Sentinel Prime</Text>
-              </View>
+              <Text style={s.topBarTitle}>Settings / सेटिंग्स</Text>
             </View>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -279,66 +295,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
                   thumbColor="#ffffff"
                 />
               </View>
-            </View>
-          </View>
-
-          {/* ─── Support Section ─── */}
-          <View style={s.settingsCol}>
-            <Text style={s.sectionHeaderLabel}>Support / सहायता</Text>
-            <View style={s.settingsListCard}>
-              
-              {/* Help & FAQ */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={s.supportItem}
-                onPress={() => Alert.alert('Help & FAQ', 'Our help center is currently loading...')}
-              >
-                <View style={s.supportItemLeft}>
-                  <MaterialIcons name="help-outline" size={22} color={Colors.primary} />
-                  <Text style={s.supportItemText}>Help & FAQ / सहायता और प्रश्न</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
-              </TouchableOpacity>
-
-              {/* Contact Admin */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={s.supportItem}
-                onPress={() => Linking.openURL('tel:+919777777780')}
-              >
-                <View style={s.supportItemLeft}>
-                  <MaterialIcons name="admin-panel-settings" size={22} color={Colors.primary} />
-                  <Text style={s.supportItemText}>Contact Admin / व्यवस्थापक से संपर्क</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
-              </TouchableOpacity>
-
-              {/* Report Issue */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={s.supportItem}
-                onPress={() => Alert.alert('Report Issue', 'Write to us at support@sentinelprime.com')}
-              >
-                <View style={s.supportItemLeft}>
-                  <MaterialIcons name="report-problem" size={22} color={Colors.primary} />
-                  <Text style={s.supportItemText}>Report Issue / समस्या की रिपोर्ट करें</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
-              </TouchableOpacity>
-
-              {/* About App */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={s.supportItem}
-                onPress={() => Alert.alert('About App', 'Sentinel Prime Guard App\nVersion 1.0.0')}
-              >
-                <View style={s.supportItemLeft}>
-                  <MaterialIcons name="info" size={22} color={Colors.primary} />
-                  <Text style={s.supportItemText}>About App / ऐप के बारे में</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
-              </TouchableOpacity>
-
             </View>
           </View>
 
@@ -831,7 +787,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
       </Modal>
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItemsAdmin.map((item) => {
           const isActive = item.key === 'more';
           return (
@@ -1453,24 +1409,6 @@ const styles = StyleSheet.create({
   // ─── Guard Settings Specific Styles ───
   scroll: {
     flex: 1,
-  },
-  brandGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  brandIcon: {
-    marginRight: 6,
-  },
-  brandText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.primary,
-    letterSpacing: -0.5,
-  },
-  notificationBtn: {
-    padding: 8,
-    marginRight: -8,
-    position: 'relative',
   },
   guardProfileCard: {
     backgroundColor: '#ffffff',

@@ -28,7 +28,7 @@ const PARENT_GROUPS = [
   { id: 'guards', name: 'Guards', icon: 'shield', color: '#002752', bgColor: 'rgba(0,39,82,0.08)' },
   { id: 'gunmen', name: 'Gunmen', icon: 'gpp-good', color: '#8B0000', bgColor: 'rgba(139,0,0,0.08)' },
   { id: 'bouncers', name: 'Bouncers', icon: 'sports-mma', color: '#3C1361', bgColor: 'rgba(60,19,97,0.08)' },
-  { id: 'helpers', name: 'Helpers / Housekeeping', icon: 'cleaning-services', color: '#E65100', bgColor: 'rgba(230,81,0,0.08)' },
+  { id: 'helpers', name: 'Helpers', icon: 'cleaning-services', color: '#E65100', bgColor: 'rgba(230,81,0,0.08)' },
 ];
 
 export default function AddWorkforceCategoryScreen({ navigation, route }: AddWorkforceCategoryScreenProps) {

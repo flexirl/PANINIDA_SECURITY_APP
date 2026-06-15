@@ -92,7 +92,8 @@ Deno.serve(async (req: Request) => {
         .from("sites")
         .select(`
           *,
-          guard_site_assignments(id, guard_id, shift_type, is_active)
+          guard_site_assignments(id, guard_id, shift_type, is_active),
+          client_users(id, user_id, is_active, users(phone))
         `, { count: "exact" });
 
       if (active !== null) query = query.eq("is_active", active === "true");
@@ -109,6 +110,16 @@ Deno.serve(async (req: Request) => {
 
       const formatted = (sites || []).map((s: any) => {
         const activeAssignments = (s.guard_site_assignments || []).filter((a: any) => a.is_active);
+
+        // Derive client phone from client_users if contact_phone is missing
+        let clientPhone = s.contact_phone;
+        if (!clientPhone || clientPhone === 'N/A') {
+          const activeClient = (s.client_users || []).find((cu: any) => cu.is_active && cu.users?.phone);
+          if (activeClient?.users?.phone) {
+            clientPhone = `+91${activeClient.users.phone}`;
+          }
+        }
+
         return {
           id: s.id,
           site_name: s.site_name,
@@ -118,6 +129,8 @@ Deno.serve(async (req: Request) => {
           longitude: s.longitude,
           geofence_radius: s.geofence_radius,
           is_active: s.is_active,
+          contact_person: s.contact_person,
+          contact_phone: clientPhone,
           day_guards_count: activeAssignments.filter((a: any) => a.shift_type === "day").length,
           night_guards_count: activeAssignments.filter((a: any) => a.shift_type === "night").length,
           total_guards: activeAssignments.length,

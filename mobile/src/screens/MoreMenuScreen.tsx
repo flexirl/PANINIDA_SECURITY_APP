@@ -18,6 +18,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
+import { hasModuleAccess } from '../api/managerPermissionsService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -32,6 +33,7 @@ interface MenuItem {
   subtitle: string;
   badge?: { label: string; bg: string; text: string; isCircle?: boolean };
   navigateTo?: string;
+  permKey?: string; // maps to manager permission module key
 }
 
 export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
@@ -51,7 +53,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
   const adminAvatar = user?.avatar_url ||
     'https://lh3.googleusercontent.com/aida-public/AB6AXuD_0DYqfWCCqQyglK94cmlyY65QjURQZnqvzhCI-kNOrwcWq2iOa9t5XZ4FGwy1gk3b0zTBjec770O5p4bKmaCXOteEABq8ZCHqhLT8ORHLvv6JEOPbZoWo7NcnB-IHh-PT1gs9sE1cuK9kndYAaNxoSECXrRdUMUIixoYLMzdPQF3vhhLU--vzBJtjvIGV-1-dUy1vDqr6XNmbL4Dci9rGdgR5YI8u5jOGLarTHD-HXhld5SubhQEh8NspBgydwjybYZLml0DDjOI';
 
-  const menuItems: MenuItem[] = [
+  const allMenuItems: MenuItem[] = [
     {
       key: 'payroll',
       icon: 'payments',
@@ -59,6 +61,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       subtitle: 'Manage salaries',
       badge: { label: '3 pending', bg: '#FEF3C7', text: '#92400E' },
       navigateTo: 'PayrollList',
+      permKey: 'payroll',
     },
     {
       key: 'recruitment',
@@ -67,6 +70,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       subtitle: 'Candidate pipeline',
       badge: { label: '5 new', bg: '#DBEAFE', text: '#1E40AF' },
       navigateTo: 'CandidateList',
+      permKey: 'recruitment',
     },
     {
       key: 'workforce_categories',
@@ -74,13 +78,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       label: 'Workforce Categories',
       subtitle: 'Manage personnel roles',
       navigateTo: 'WorkforceCategoryList',
-    },
-    {
-      key: 'analytics',
-      icon: 'analytics',
-      label: 'Analytics',
-      subtitle: 'Dashboard reports',
-      navigateTo: 'AnalyticsDashboard',
+      permKey: 'categories',
     },
     {
       key: 'uniforms',
@@ -88,6 +86,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       label: 'Uniforms',
       subtitle: 'Track issued items',
       navigateTo: 'UniformManagement',
+      permKey: 'uniforms',
     },
     {
       key: 'inspections',
@@ -95,6 +94,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       label: 'Inspections',
       subtitle: 'Site inspection reports',
       navigateTo: 'InspectionList',
+      permKey: 'inspections',
     },
     {
       key: 'reports',
@@ -102,6 +102,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       label: 'Reports',
       subtitle: 'Export data',
       navigateTo: 'Reports',
+      permKey: 'reports',
     },
     {
       key: 'notifications',
@@ -110,6 +111,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       subtitle: 'Alerts & reminders',
       badge: { label: '4', bg: '#BA1A1A', text: '#FFFFFF', isCircle: true },
       navigateTo: 'NotificationCenter',
+      permKey: 'notifications',
     },
     {
       key: 'settings',
@@ -117,8 +119,19 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       label: 'Settings',
       subtitle: 'App preferences',
       navigateTo: 'Settings',
+      permKey: 'settings',
     },
   ];
+
+  // Filter menu items based on manager permissions
+  const isManager = user?.role === 'manager';
+  const managerPerms = user?.manager_permissions;
+  const menuItems = isManager
+    ? allMenuItems.filter((item) => {
+        if (!item.permKey) return true;
+        return hasModuleAccess(managerPerms, item.permKey);
+      })
+    : allMenuItems;
 
   const handleItemPress = (item: MenuItem) => {
     if (item.navigateTo) {
@@ -148,12 +161,20 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
     );
   };
 
-  const navItems = [
-    { key: 'dashboard', icon: 'dashboard' as const, label: 'Dashboard' },
-    { key: 'workforce', icon: 'people' as const, label: getLabel('plural') },
-    { key: 'sites', icon: 'location-on' as const, label: 'Sites' },
-    { key: 'more', icon: 'menu' as const, label: 'More' },
+  const allNavItems = [
+    { key: 'dashboard', icon: 'dashboard' as const, label: 'Dashboard', permKey: 'dashboard' },
+    { key: 'workforce', icon: 'people' as const, label: getLabel('plural'), permKey: 'workforce' },
+    { key: 'sites', icon: 'location-on' as const, label: 'Sites', permKey: 'sites' },
+    { key: 'more', icon: 'menu' as const, label: 'More', permKey: null },
   ];
+
+  // Filter bottom nav for managers
+  const navItems = isManager
+    ? allNavItems.filter((item) => {
+        if (!item.permKey) return true; // 'more' tab always visible
+        return hasModuleAccess(managerPerms, item.permKey);
+      })
+    : allNavItems;
 
   const handleNavPress = (key: string) => {
     if (key === 'dashboard') {
@@ -286,7 +307,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       </ScrollView>
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'more';
           return (

@@ -23,8 +23,10 @@ import { getDocumentChecklist, verifyDocument } from '../api/workforceDocumentSe
 import { supabase } from '../api/supabase';
 import AttendanceStatusBadge from '../components/AttendanceStatusBadge';
 import Skeleton from '../components/Skeleton';
+import CachedImage from '../components/CachedImage';
 import type { WorkforcePersonnel, DocumentChecklistItem, WorkforceAttendance, SiteAssignment } from '../types/workforce';
 import { useFileUpload } from '../hooks/useFileUpload';
+import { useImageUrl } from '../utils/imageUtils';
 
 interface WorkforcePersonnelDetailScreenProps {
   route: any;
@@ -363,7 +365,14 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
           <View style={s.profileRow}>
             <View style={s.avatarContainer}>
               {personnel.photo_url ? (
-                <Image source={{ uri: personnel.photo_url }} style={s.avatar} />
+                <CachedImage
+                  uri={personnel.photo_url}
+                  style={s.avatar}
+                  containerStyle={s.avatar}
+                  fallbackIcon="person"
+                  fallbackIconSize={28}
+                  showRetry={false}
+                />
               ) : (
                 <View style={s.avatarFallback}>
                   <Text style={s.avatarText}>{initials}</Text>
@@ -459,6 +468,18 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
                 <View style={s.infoGridItem}>
                   <Text style={s.infoLabel}>PAN CARD</Text>
                   <Text style={s.infoValue}>{personnel.pan_number || 'N/A'}</Text>
+                </View>
+                <View style={s.infoGridItem}>
+                  <Text style={s.infoLabel}>DATE OF BIRTH</Text>
+                  <Text style={s.infoValue}>{formatDate(personnel.date_of_birth)}</Text>
+                </View>
+                <View style={s.infoGridItem}>
+                  <Text style={s.infoLabel}>GENDER</Text>
+                  <Text style={s.infoValue}>{personnel.gender ? personnel.gender.toUpperCase() : 'MALE'}</Text>
+                </View>
+                <View style={s.infoGridItem}>
+                  <Text style={s.infoLabel}>PVR VERIFIED</Text>
+                  <Text style={s.infoValue}>{personnel.police_verification ? 'YES' : 'NO'}</Text>
                 </View>
               </View>
 
@@ -776,10 +797,15 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
           </View>
           <View style={s.imageContainer}>
             {viewerUrl ? (
-              <Image
-                source={{ uri: viewerUrl }}
+              <CachedImage
+                uri={viewerUrl}
                 style={s.viewerImage}
+                containerStyle={s.viewerImage}
                 resizeMode="contain"
+                fallbackIcon="broken-image"
+                fallbackIconSize={48}
+                fallbackIconColor="rgba(255,255,255,0.5)"
+                showRetry={true}
               />
             ) : null}
           </View>

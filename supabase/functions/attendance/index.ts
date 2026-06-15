@@ -19,6 +19,7 @@ import {
   isWithinGeofence,
   isValidCoordinates,
   isWithinShiftTiming,
+  calculateAttendanceStatus,
 } from "../_shared/geo-utils.ts";
 
 Deno.serve(async (req: Request) => {
@@ -61,7 +62,8 @@ Deno.serve(async (req: Request) => {
         .select(`
           id, site_id, shift_type,
           sites(id, site_name, latitude, longitude, geofence_radius,
-                day_shift_start, day_shift_end, night_shift_start, night_shift_end)
+                day_shift_start, day_shift_end, night_shift_start, night_shift_end,
+                late_threshold_minutes, min_hours_present, min_hours_half_day)
         `)
         .eq("guard_id", targetGuardId)
         .eq("is_active", true)
@@ -91,10 +93,11 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // ── SHIFT TIMING CHECK ──
+      // ── SHIFT TIMING CHECK (uses site-configurable late threshold, default 120 min = 2 hours) ──
       const shiftStart = shiftType === "day" ? site.day_shift_start : site.night_shift_start;
       const shiftEnd = shiftType === "day" ? site.day_shift_end : site.night_shift_end;
-      const shiftCheck = isWithinShiftTiming(shiftStart, shiftEnd, 30);
+      const lateThreshold = site.late_threshold_minutes ?? 120;
+      const shiftCheck = isWithinShiftTiming(shiftStart, shiftEnd, 30, lateThreshold);
 
       let status = "present";
       if (shiftCheck.isLate) {
@@ -134,6 +137,9 @@ Deno.serve(async (req: Request) => {
           status,
           is_manual_entry: user.role === "admin",
           manual_entry_by: user.role === "admin" ? user.id : null,
+          remarks: shiftCheck.isLate
+            ? `Late by ${Math.floor(shiftCheck.minutesOff / 60)}h ${shiftCheck.minutesOff % 60}m`
+            : null,
         })
         .select("*")
         .single();
@@ -165,7 +171,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ======================================================
-    // CHECK-OUT (Guard marks check-out with GPS)
+    // CHECK-OUT (Guard marks check-out with GPS + selfie + status calculation)
     // ======================================================
     if (req.method === "PUT") {
       const roleError = requireRole(user, ["admin", "guard"]);
@@ -176,13 +182,15 @@ Deno.serve(async (req: Request) => {
       const { latitude, longitude, selfie_url } = body;
 
       if (!isValidCoordinates(latitude, longitude)) {
-        return errorResponse("Valid latitude and longitude are required");
+        return errorResponse("Valid latitude and longitude are required for check-out");
       }
+
+      // Note: Selfie is no longer required for check-out per user request.
 
       // Find today's attendance record
       let query = supabase
         .from("attendance")
-        .select("*, sites(latitude, longitude, geofence_radius, site_name)")
+        .select("*, sites(latitude, longitude, geofence_radius, site_name, min_hours_present, min_hours_half_day)")
         .is("check_out_time", null); // not yet checked out
 
       if (attendanceId) {
@@ -203,7 +211,7 @@ Deno.serve(async (req: Request) => {
 
       const site = record.sites as any;
 
-      // Calculate checkout distance from site
+      // ── ENFORCE GEOFENCE ON CHECK-OUT ──
       const checkoutGeo = isWithinGeofence(
         latitude,
         longitude,
@@ -212,15 +220,47 @@ Deno.serve(async (req: Request) => {
         site.geofence_radius || 100
       );
 
-      // Update with checkout info (hours_worked is auto-calculated by DB trigger)
+      if (!checkoutGeo.withinFence) {
+        return errorResponse(
+          `Cannot check out — outside geofence! You are ${checkoutGeo.distanceMeters}m away from ${site.site_name}. ` +
+          `Must be within ${site.geofence_radius || 100}m to check out.`,
+          403
+        );
+      }
+
+      // ── CALCULATE HOURS WORKED ──
+      const now = new Date();
+      const checkInTime = new Date(record.check_in_time);
+      const diffHours = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+      const hoursWorked = Number(Math.max(0, diffHours).toFixed(2));
+
+      // ── DETERMINE FINAL STATUS ──
+      const wasLateCheckIn = record.status === "late";
+      const finalStatus = calculateAttendanceStatus(
+        hoursWorked,
+        wasLateCheckIn,
+        site.min_hours_present ?? 7,
+        site.min_hours_half_day ?? 4
+      );
+
+      // Build remarks
+      const hoursH = Math.floor(hoursWorked);
+      const hoursM = Math.round((hoursWorked - hoursH) * 60);
+      let remarks = `Worked ${hoursH}h ${hoursM}m`;
+      if (wasLateCheckIn) remarks += " (checked in late)";
+
+      // Update with checkout info
       const { data: updated, error: updateErr } = await supabase
         .from("attendance")
         .update({
-          check_out_time: new Date().toISOString(),
+          check_out_time: now.toISOString(),
           check_out_latitude: latitude,
           check_out_longitude: longitude,
           check_out_distance: checkoutGeo.distanceMeters,
-          check_out_selfie: selfie_url || null,
+          check_out_selfie: selfie_url,
+          hours_worked: hoursWorked,
+          status: finalStatus,
+          remarks,
         })
         .eq("id", record.id)
         .select("*")
@@ -234,8 +274,12 @@ Deno.serve(async (req: Request) => {
         success: true,
         message: `Check-out recorded at ${site.site_name}`,
         geofence: {
-          within_fence: checkoutGeo.withinFence,
+          within_fence: true,
           distance_from_site: `${checkoutGeo.distanceMeters}m`,
+        },
+        shift: {
+          status: finalStatus,
+          hours_worked: hoursWorked,
         },
         attendance: updated,
       });

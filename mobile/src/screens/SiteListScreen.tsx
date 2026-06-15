@@ -158,6 +158,20 @@ function SiteCard({
         <Text style={s.clientName} numberOfLines={1}>{site.client.toUpperCase()}</Text>
         <Text style={s.addressText} numberOfLines={2}>{site.address}</Text>
 
+        {/* Contact Information */}
+        <View style={s.contactRow}>
+          <View style={s.contactItem}>
+            <MaterialIcons name="person-outline" size={16} color={Colors.onSurfaceVariant} />
+            <Text style={s.contactText} numberOfLines={1}>{site.contactName}</Text>
+          </View>
+          <View style={s.contactItem}>
+            <MaterialIcons name="phone" size={16} color={Colors.primary} />
+            <Text style={[s.contactText, { color: Colors.primary, fontWeight: '600' }]} numberOfLines={1}>
+              {site.contactPhone}
+            </Text>
+          </View>
+        </View>
+
         {/* Action Button */}
         <TouchableOpacity
           activeOpacity={0.8}
@@ -226,8 +240,8 @@ export default function SiteListScreen({ navigation }: SiteListScreenProps) {
           address: s.address,
           dayGuards: counts.day,
           nightGuards: counts.night,
-          contactName: s.contact_person || 'N/A',
-          contactPhone: s.contact_phone || 'N/A',
+          contactName: (s.contact_person && s.contact_person !== 'N/A') ? s.contact_person : (s.client_name || 'N/A'),
+          contactPhone: (s.contact_phone && s.contact_phone !== 'N/A') ? s.contact_phone : 'N/A',
         };
       });
 
@@ -501,7 +515,7 @@ export default function SiteListScreen({ navigation }: SiteListScreenProps) {
       </Animated.View>
 
       {/* ═══ Bottom Navigation ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'sites';
           return (
@@ -772,7 +786,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.outline,
     lineHeight: 18,
+    marginBottom: 12,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 39, 82, 0.04)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 16,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  contactText: {
+    fontSize: 12,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '500',
   },
   viewDetailsBtn: {
     width: '100%',

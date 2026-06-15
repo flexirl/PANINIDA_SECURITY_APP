@@ -10,24 +10,27 @@ import {
   StatusBar,
   Dimensions,
   Image,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+  Linking,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius } from '../constants/theme';
-import { useScaledStyles } from '../context/FontSizeContext';
+import { Colors, BorderRadius } from '../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import * as payrollService from '../api/payrollService';
 
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const DEFAULT_AVATAR = 'https://lh3.googleusercontent.com/aida-public/AB6AXuBTiCH7H_sH3ZZJzckhG_6Uu4DxeAIinxdPFXHrqm9a0sTxDBsqKtnK8qyofOAcM5oK2-cSGXLwSq0MDcVw-OOZxsg3dnvw39bcUsjutgdw5sn4QONh-2M7J-V7D6a0Ykw5smzyKVhIAlTa6t10oGzftkCxrfy-I949HGtiWll2R_4KARxqJjHaZUTYsDg4NhjRTlPEKH4063o_riyNSlhra1eu4M9233NVdGka8qQX4qbzAVVW_rGbqY3Pd56_jekgsyZsyoPUjew';
-const EAGLE_LOGO = 'https://lh3.googleusercontent.com/aida-public/AB6AXuCHZueJsEm-6R0h_TAAf5DC7mUA4N3op7FLhysxj4BBSmMd3ScjTMLPQSISOrPL1UD9F-gEtpi7qc4hHYvKio8u-EDHnQDQNU6x_DFXV5N7j92s67vojAaAdces9mU_8ybzJsG5R3k3RIFovRoQiQyMQMCNzNrhxj6v2GkAAGWjHzdjzsSt260JmwDaOHKzgfLfBrleIlMkqJNNNAMsOOfZtY1IOGjYP0hgAQw03pSi0l8AtoKm_d8lZp03a4LBD9w61g';
-
-const HINDI_MONTHS = [
-  'जनवरी', 'फरवरी', 'मार्च', 'अप्रैल', 'मई', 'जून',
-  'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'
-];
-
+// Format year-month YYYY-MM to word month format, e.g. "May 2026"
 const formatMonthString = (monthStr: string) => {
   try {
     const [year, month] = monthStr.split('-');
@@ -38,50 +41,197 @@ const formatMonthString = (monthStr: string) => {
   }
 };
 
-const getMonthAndYearAbbrev = (monthStr: string) => {
-  try {
-    const [year, month] = monthStr.split('-');
-    const date = new Date(parseInt(year), parseInt(month) - 1, 1);
-    const mName = date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-    const yName = year.slice(-2);
-    return { month: mName, year: yName };
-  } catch (err) {
-    return { month: 'JAN', year: '26' };
+const SlipAccordionItem = ({ record, onDownload }: { record: payrollService.PayrollRecord, onDownload: () => void }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const toggleExpand = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded(!expanded);
+  };
+
+  const isPaid = record.status === 'paid';
+  const isApproved = record.status === 'approved';
+  
+  let statusText = 'Processing Verification...';
+  let statusColor = '#b52424'; // secondary
+  let iconName = 'history' as any;
+  let iconBgColor = 'rgba(181, 36, 36, 0.1)';
+  
+  if (isPaid) {
+    statusText = `Paid ${formatMonthString(record.month)}`;
+    statusColor = '#10b981'; // success
+    iconName = 'calendar_today';
+    iconBgColor = 'rgba(0, 39, 82, 0.1)'; // primary-fixed/20
+  } else if (isApproved) {
+    statusText = 'Approved, Pending Payment';
+    statusColor = '#D97706'; 
+    iconName = 'calendar_today';
+    iconBgColor = '#f0f3fd';
   }
+
+  const baseSalary = record.pro_rated_salary || 0;
+  const overtimeAmt = record.overtime_amount || 0;
+  const allowances = 0; 
+  const bonus = 0;
+  const grossEarnings = baseSalary + overtimeAmt + allowances + bonus;
+
+  const latePenalty = record.penalty_amount || 0;
+  const uniformDed = record.uniform_deduction || 0;
+  const advanceDed = record.advance_deduction || 0;
+  const otherDed = record.other_deduction || 0;
+  const pf = 0;
+  const esi = 0;
+  const totalDeductions = latePenalty + uniformDed + advanceDed + otherDed + pf + esi;
+  
+  const netPayable = record.final_salary || Math.max(0, grossEarnings - totalDeductions);
+
+  return (
+    <View style={[styles.slipItem, !isPaid && !isApproved && styles.slipItemPending]}>
+      <TouchableOpacity 
+        activeOpacity={0.7} 
+        style={styles.slipHeader} 
+        onPress={toggleExpand}
+        disabled={!isPaid && !isApproved}
+      >
+        <View style={styles.slipHeaderLeft}>
+          <View>
+            <Text style={styles.slipMonthText}>{formatMonthString(record.month)}</Text>
+            <Text style={[styles.slipStatusText, { color: statusColor }, (!isPaid && !isApproved) && styles.slipStatusTextItalic]}>
+              {statusText}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.slipHeaderRight}>
+          {(isPaid || isApproved) ? (
+            <>
+              <View style={styles.netPayCol}>
+                <Text style={styles.netPayLabel}>NET PAY</Text>
+                <Text style={styles.netPayVal}>₹{netPayable.toLocaleString('en-IN')}</Text>
+              </View>
+              <MaterialIcons 
+                name="expand-more" 
+                size={24} 
+                color="#747780" 
+                style={{ transform: [{ rotate: expanded ? '180deg' : '0deg' }] }}
+              />
+            </>
+          ) : (
+            <MaterialIcons name="lock" size={20} color="rgba(116, 119, 128, 0.4)" />
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={styles.expandedContent}>
+          <View style={styles.expandedInner}>
+            {/* Earnings Section */}
+            <View style={styles.sectionBlock}>
+              <View style={[styles.sectionHeader, { borderBottomColor: 'rgba(0, 19, 45, 0.1)' }]}>
+                <Text style={styles.sectionTitleText}>Earnings / कमाई</Text>
+                <Text style={styles.sectionTitleText}>₹{grossEarnings.toLocaleString('en-IN')}</Text>
+              </View>
+              
+              <View style={styles.breakdownList}>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.bdLabel}>Base Salary / मूल वेतन</Text>
+                  <Text style={styles.bdValue}>₹{baseSalary.toLocaleString('en-IN')}</Text>
+                </View>
+                {overtimeAmt > 0 && (
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.bdLabel}>Overtime / अतिरिक्त समय</Text>
+                    <Text style={styles.bdValue}>₹{overtimeAmt.toLocaleString('en-IN')}</Text>
+                  </View>
+                )}
+                {allowances > 0 && (
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.bdLabel}>Allowances / भत्ते</Text>
+                    <Text style={styles.bdValue}>₹{allowances.toLocaleString('en-IN')}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Deductions Section */}
+            {totalDeductions > 0 && (
+              <View style={[styles.sectionBlock, { marginTop: 24 }]}>
+                <View style={[styles.sectionHeader, { borderBottomColor: 'rgba(181, 36, 36, 0.1)' }]}>
+                  <Text style={[styles.sectionTitleText, { color: '#b52424' }]}>Deductions / कटौतियां</Text>
+                  <Text style={[styles.sectionTitleText, { color: '#b52424' }]}>₹{totalDeductions.toLocaleString('en-IN')}</Text>
+                </View>
+                
+                <View style={styles.breakdownList}>
+                  {pf > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.bdLabel}>Provident Fund (PF)</Text>
+                      <Text style={styles.bdValue}>₹{pf.toLocaleString('en-IN')}</Text>
+                    </View>
+                  )}
+                  {esi > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.bdLabel}>ESI</Text>
+                      <Text style={styles.bdValue}>₹{esi.toLocaleString('en-IN')}</Text>
+                    </View>
+                  )}
+                  {latePenalty > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.bdLabel}>Late Penalty / देरी दंड</Text>
+                      <Text style={styles.bdValue}>₹{latePenalty.toLocaleString('en-IN')}</Text>
+                    </View>
+                  )}
+                  {uniformDed > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.bdLabel}>Uniform / वर्दी</Text>
+                      <Text style={styles.bdValue}>₹{uniformDed.toLocaleString('en-IN')}</Text>
+                    </View>
+                  )}
+                  {advanceDed > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.bdLabel}>Advance / अग्रिम</Text>
+                      <Text style={styles.bdValue}>₹{advanceDed.toLocaleString('en-IN')}</Text>
+                    </View>
+                  )}
+                  {otherDed > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.bdLabel}>Others / अन्य</Text>
+                      <Text style={styles.bdValue}>₹{otherDed.toLocaleString('en-IN')}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Actions */}
+            <View style={styles.expandedActions}>
+              <TouchableOpacity activeOpacity={0.7} style={styles.btnPrint} onPress={() => Alert.alert('Print', 'Printing slip...')}>
+                <MaterialIcons name="print" size={18} color="#111c2c" />
+                <Text style={styles.btnPrintText}>Print</Text>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.7} style={styles.btnPdf} onPress={onDownload}>
+                <MaterialIcons name="download" size={18} color="#ffffff" />
+                <Text style={styles.btnPdfText}>PDF</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
+  );
 };
 
 export default function GuardSalarySlipsScreen({ navigation }: { navigation: any }) {
-  const s = useScaledStyles(styles);
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [payrollRecords, setPayrollRecords] = useState<payrollService.PayrollRecord[]>([]);
-  const [ytdEarned, setYtdEarned] = useState(149400); // Default fallback YTD
 
   const loadPayrollData = async () => {
     try {
       const records = await payrollService.getPayrollRecords();
       setPayrollRecords(records);
-
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      let earned = 0;
-      let hasPaidThisYear = false;
-
-      records.forEach((rec) => {
-        const [year] = rec.month.split('-');
-        if (parseInt(year) === currentYear && rec.status === 'paid') {
-          earned += rec.final_salary;
-          hasPaidThisYear = true;
-        }
-      });
-
-      if (hasPaidThisYear) {
-        setYtdEarned(earned);
-      }
     } catch (err) {
       console.error('Error fetching payroll records for guard:', err);
-      Alert.alert('Error / त्रुटि', 'Failed to retrieve salary slips. / वेतन पर्ची प्राप्त करने में विफल।');
+      Alert.alert('Error', 'Failed to retrieve salary slips.');
     } finally {
       setLoading(false);
     }
@@ -91,46 +241,13 @@ export default function GuardSalarySlipsScreen({ navigation }: { navigation: any
     loadPayrollData();
   }, []);
 
-  const handleCardPress = (id: string) => {
-    navigation.navigate('GuardSalarySlipDetail', { payrollId: id });
-  };
-
   const handleDownloadPress = (monthName: string) => {
     Alert.alert('Success / सफलता', `Downloading PDF Payslip for ${monthName}... / ${monthName} के लिए पीडीएफ वेतन पर्ची डाउनलोड की जा रही है...`);
   };
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return {
-          label: 'PAID',
-          color: Colors.successGreen,
-          bgColor: 'rgba(16, 185, 129, 0.1)',
-        };
-      case 'generated':
-      case 'approved':
-        return {
-          label: 'GENERATED',
-          color: '#D97706',
-          bgColor: 'rgba(217, 119, 6, 0.1)',
-        };
-      default:
-        return {
-          label: 'PENDING',
-          color: Colors.outline,
-          bgColor: '#f4f3f7',
-        };
-    }
-  };
-
-  const paidRecords = payrollRecords.filter(r => r.status === 'paid');
-  const lastPaidText = paidRecords.length > 0
-    ? formatMonthString(paidRecords[0].month)
-    : 'May 2026';
-
   const navItems = [
-    { key: 'home', icon: 'home' as const, label: 'Home' },
-    { key: 'attendance', icon: 'calendar-today' as const, label: 'Attendance' },
+    { key: 'home', icon: 'dashboard' as const, label: 'Home' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
     { key: 'salary', icon: 'payments' as const, label: 'Salary' },
     { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
@@ -147,209 +264,179 @@ export default function GuardSalarySlipsScreen({ navigation }: { navigation: any
 
   if (loading) {
     return (
-      <View style={s.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={s.loadingText}>Fetching payroll summary... / वेतन सारांश लोड हो रहा है...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#00132d" />
+        <Text style={styles.loadingText}>Loading records...</Text>
       </View>
     );
   }
 
-  // Pre-seed mock slips in case DB list is empty, matching user mockup
-  const getSlipsToRender = () => {
-    if (payrollRecords.length > 0) {
-      return payrollRecords;
-    }
-    
-    // Seed fallbacks for visual compliance
-    return [
-      {
-        id: 'slip-1',
-        month: '2026-05',
-        final_salary: 24900,
-        status: 'generated',
-      },
-      {
-        id: 'slip-2',
-        month: '2026-04',
-        final_salary: 24900,
-        status: 'paid',
-      },
-      {
-        id: 'slip-3',
-        month: '2026-03',
-        final_salary: 23150,
-        status: 'paid',
-      }
-    ] as any[];
-  };
+  // Find latest paid/approved record for highlight card
+  const latestRecord = payrollRecords.find(r => r.status === 'paid' || r.status === 'approved');
+  
+  let highlightNetPay = 0;
+  let highlightGross = 0;
+  let highlightDeductions = 0;
+  let highlightMonth = 'No Records';
+  let highlightIsPaid = false;
 
-  const renderedSlips = getSlipsToRender();
+  if (latestRecord) {
+    highlightMonth = formatMonthString(latestRecord.month);
+    highlightIsPaid = latestRecord.status === 'paid';
+    
+    highlightGross = (latestRecord.pro_rated_salary || 0) + (latestRecord.overtime_amount || 0);
+    highlightDeductions = (latestRecord.penalty_amount || 0) + (latestRecord.uniform_deduction || 0) + (latestRecord.advance_deduction || 0) + (latestRecord.other_deduction || 0);
+    highlightNetPay = latestRecord.final_salary || Math.max(0, highlightGross - highlightDeductions);
+  }
 
   return (
-    <View style={s.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-
-      {/* ═══ TopAppBar ═══ */}
-      <View style={[s.topBar, { height: 60 + insets.top, paddingTop: insets.top }]}>
-        <View style={s.topBarInner}>
-          <View style={s.topBarLeft}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.goBack()}
-              style={s.backBtn}
-            >
-              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+      
+      {/* ═══ Top App Bar ═══ */}
+      <View style={[styles.header, { height: 56 + insets.top, paddingTop: insets.top }]}>
+        <View style={styles.headerInner}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+              <MaterialIcons name="arrow-back" size={24} color="#00132d" />
             </TouchableOpacity>
-            
-            <View style={s.logoContainer}>
-              <Image source={{ uri: EAGLE_LOGO }} style={s.logoImage} />
-            </View>
+            <Image 
+              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBjWcPgQ9_BPA--bRSkPaBZLRGLh-4CWQZnNrLKJ9iEZvQF7uVFVhKz8s4GDmzkUDYQB8pZLzDJrBICPhFMVFIpWBVHI-Qb2bm12rbpLFzSmwIG8qL6eR-g0naiEgZfbf7s2tFbKwASU1dnuMJ8jEMKDZsSFBGx4pzVGyiz7C4kfwvDy5S4WwPefEKqyqsi_PevjZz560_ebosD8_9WH-P6SBaoaVkrM5qnFMc_7SN8f_OY7A-Z8MeN5OMBnIP8TrHckSD83ga-v0c' }} 
+              style={styles.headerLogo} 
+            />
           </View>
-
-
-
-          <View style={s.topBarRight}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={s.topBarIconBtn}
-              onPress={() => navigation.navigate('NotificationCenter')}
-            >
-              <MaterialIcons name="notifications" size={26} color={Colors.primary} />
-              <View style={s.notifBadgeRedDot} />
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.iconBtn}>
+              <MaterialIcons name="notifications-none" size={24} color="#00132d" />
+              <View style={styles.notifBadgeRedDot} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* ─── Sub-Header Section ─── */}
-        <View style={s.subHeaderContainer}>
-          <Text style={s.subHeaderTitle}>Payslips / वेतन पर्ची</Text>
-          <Text style={s.subHeaderLabel}>FINANCIAL RECORDS & HISTORY</Text>
+        <View style={styles.screenTitleWrap}>
+          <Text style={styles.screenTitle}>My Salary Slips / मेरी वेतन पर्ची</Text>
+          <Text style={styles.screenSubtitle}>View your financial records / अपने वित्तीय रिकॉर्ड देखें</Text>
         </View>
 
-        {/* ─── Salary Overview Card ─── */}
-        <View style={s.overviewCard}>
-          <View style={s.overviewHeader}>
-            <View>
-              <Text style={s.overviewLabel}>Total Earned (YTD) / कुल कमाई (वर्ष)</Text>
-              <Text style={s.overviewAmount}>₹{ytdEarned.toLocaleString('en-IN')}</Text>
+        {/* ─── Highlight Card ─── */}
+        {latestRecord && (
+          <View style={styles.highlightCard}>
+            {/* Decors mapped from HTML css are complex, we'll use simple background */}
+            <View style={styles.highlightTop}>
+              <View>
+                <Text style={styles.highlightLabel}>LATEST PAYOUT / नवीनतम भुगतान</Text>
+                <Text style={styles.highlightMonth}>{highlightMonth}</Text>
+              </View>
+              {highlightIsPaid && (
+                <View style={styles.paidBadge}>
+                  <MaterialIcons name="check-circle" size={14} color="#ffffff" />
+                  <Text style={styles.paidBadgeText}>PAID</Text>
+                </View>
+              )}
             </View>
-            <View style={s.trendBadge}>
-              <MaterialIcons name="trending-up" size={16} color={Colors.successGreen} />
-              <Text style={s.trendText}>↑ 4%</Text>
-            </View>
-          </View>
-          
-          <View style={s.progressBarBackground}>
-            <View style={s.progressBarFilled} />
-          </View>
-          
-          <Text style={s.progressBarLabel}>Financial Year 2026-27</Text>
-        </View>
 
-        {/* ─── Mini Bento Cards Row ─── */}
-        <View style={s.miniCardsGrid}>
-          <View style={s.miniCard}>
-            <View style={s.miniCardIconWrapper}>
-              <MaterialIcons name="account-balance-wallet" size={20} color={Colors.primary} />
+            <View style={styles.highlightMid}>
+              <Text style={styles.highlightLabel}>NET PAYABLE AMOUNT / शुद्ध देय राशि</Text>
+              <View style={styles.highlightNetRow}>
+                <Text style={styles.highlightNetVal}>₹{highlightNetPay.toLocaleString('en-IN')}</Text>
+                <Text style={styles.highlightCurrency}>INR</Text>
+              </View>
             </View>
-            <Text style={s.miniCardLabel}>NEXT PAYOUT / अगला भुगतान</Text>
-            <Text style={s.miniCardValue}>June 05, 2026</Text>
-          </View>
 
-          <View style={s.miniCard}>
-            <View style={s.miniCardIconWrapper}>
-              <MaterialIcons name="history" size={20} color={Colors.primary} />
+            <View style={styles.highlightBottom}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.highlightBottomLabel}>TOTAL EARNINGS / कुल कमाई</Text>
+                <Text style={styles.highlightBottomVal}>₹{highlightGross.toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={styles.highlightBottomLabel}>TOTAL DEDUCTIONS / कुल कटौतियां</Text>
+                <Text style={[styles.highlightBottomVal, { color: '#ffb4ac' }]}>₹{highlightDeductions.toLocaleString('en-IN')}</Text>
+              </View>
             </View>
-            <Text style={s.miniCardLabel}>LAST PAID / पिछला भुगतान</Text>
-            <Text style={s.miniCardValue}>{lastPaidText}</Text>
-          </View>
-        </View>
 
-        {/* ─── Monthly Salary Slips List ─── */}
-        <View style={s.slipsSection}>
-          <View style={s.slipsHeader}>
-            <Text style={s.slipsTitle}>Monthly Salary Slips</Text>
-            <TouchableOpacity activeOpacity={0.7} style={s.filterBtn}>
-              <MaterialIcons name="filter-list" size={16} color={Colors.onSurface} />
-              <Text style={s.filterText}>Filter</Text>
+            <TouchableOpacity 
+              activeOpacity={0.8} 
+              style={styles.downloadBigBtn} 
+              onPress={() => handleDownloadPress(highlightMonth)}
+            >
+              <MaterialIcons name="download" size={20} color="#00132d" />
+              <Text style={styles.downloadBigBtnText}>Download PDF / पीडीएफ डाउनलोड करें</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ─── Slips List ─── */}
+        <View style={styles.listSection}>
+          <View style={styles.listHeader}>
+            <Text style={styles.listHeaderTitle}>Payment History</Text>
+            <TouchableOpacity style={styles.filterBtn}>
+              <Text style={styles.filterBtnText}>Filter</Text>
+              <MaterialIcons name="filter-list" size={18} color="#00132d" />
             </TouchableOpacity>
           </View>
 
-          <View style={s.slipsList}>
-            {renderedSlips.map((item) => {
-              const monthInfo = getMonthAndYearAbbrev(item.month);
-              const statusMeta = getStatusStyle(item.status);
-              const formattedMonth = formatMonthString(item.month);
-
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.9}
-                  style={s.slipCard}
-                  onPress={() => handleCardPress(item.id)}
-                >
-                  {item.status === 'generated' && <View style={s.generatedAccentLine} />}
-                  
-                  <View style={s.slipCardInner}>
-                    <View style={s.slipCardLeft}>
-                      <View style={s.dateBox}>
-                        <Text style={s.dateBoxMonth}>{monthInfo.month}</Text>
-                        <Text style={s.dateBoxYear}>{monthInfo.year}</Text>
-                      </View>
-                      
-                      <View style={s.slipDetails}>
-                        <Text style={s.slipAmount}>₹{item.final_salary.toLocaleString('en-IN')}.00</Text>
-                        <View style={[s.statusBadge, { backgroundColor: statusMeta.bgColor }]}>
-                          <Text style={[s.statusBadgeText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={s.slipCardRight}>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        style={s.downloadBtn}
-                        onPress={() => handleDownloadPress(formattedMonth)}
-                      >
-                        <MaterialIcons name="download" size={20} color={Colors.primary} />
-                      </TouchableOpacity>
-                      <MaterialIcons name="chevron-right" size={24} color="rgba(195, 198, 208, 0.7)" />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.listWrap}>
+            {payrollRecords.map((record) => (
+              <SlipAccordionItem 
+                key={record.id} 
+                record={record} 
+                onDownload={() => handleDownloadPress(formatMonthString(record.month))} 
+              />
+            ))}
+            
+            {payrollRecords.length === 0 && (
+              <Text style={styles.noRecordsText}>No salary records found.</Text>
+            )}
           </View>
-
-          {/* Older History Button */}
-          <TouchableOpacity activeOpacity={0.8} style={s.olderHistoryBtn}>
-            <Text style={s.olderHistoryBtnText}>View Older History</Text>
-          </TouchableOpacity>
         </View>
 
-        <View style={{ height: 120 }} />
+        {/* ─── Help Section ─── */}
+        <View style={styles.helpSection}>
+          <View style={styles.helpIconWrap}>
+            <MaterialIcons name="contact-support" size={30} color="#00132d" />
+          </View>
+          <View style={styles.helpTextWrap}>
+            <Text style={styles.helpTitle}>Need Clarification?</Text>
+            <Text style={styles.helpSubtitle}>If there's any discrepancy in your salary, please raise a dispute or contact admin before the 5th of the month.</Text>
+          </View>
+          <View style={{ width: '100%', gap: 12 }}>
+            <TouchableOpacity 
+              activeOpacity={0.8} 
+              style={[styles.disputeBtn, { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#00132d', flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]}
+              onPress={() => Linking.openURL('tel:7322012345')}
+            >
+              <MaterialIcons name="call" size={18} color="#00132d" style={{ marginRight: 8 }} />
+              <Text style={[styles.disputeBtnText, { color: '#00132d' }]}>Call Admin (Pankaj Kumar)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.8} style={[styles.disputeBtn, { alignItems: 'center' }]}>
+              <Text style={styles.disputeBtnText}>Raise a Dispute</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* ═══ Bottom Navigation Bar ═══ */}
-      <View style={s.bottomNav}>
+      {/* ═══ Bottom Nav (Floating pill style) ═══ */}
+      <View style={[styles.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
       {navItems.map((item) => {
         const isActive = item.key === 'salary';
         return (
           <TouchableOpacity
             key={item.key}
-            style={[s.navItem, isActive && s.navItemActive]}
+            style={[styles.navItem, isActive && styles.navItemActive]}
             activeOpacity={0.7}
             onPress={() => handleNavPress(item.key)}
           >
             <MaterialIcons
               name={item.icon}
               size={24}
-              color={isActive ? '#ffffff' : Colors.onSurfaceVariant}
+              color={isActive ? '#ffffff' : 'rgba(67, 71, 79, 0.7)'}
             />
-            <Text style={[s.navLabel, isActive && s.navLabelActive]}>
+            <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
               {item.label}
             </Text>
           </TouchableOpacity>
@@ -363,354 +450,396 @@ export default function GuardSalarySlipsScreen({ navigation }: { navigation: any
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#faf9fd',
+    backgroundColor: '#f9fbff',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#faf9fd',
+    backgroundColor: '#f9fbff',
   },
   loadingText: {
     marginTop: 12,
-    color: Colors.onSurfaceVariant,
+    color: '#43474f',
     fontWeight: '600',
     fontSize: 14,
   },
-  topBar: {
-    backgroundColor: '#ffffff',
+  header: {
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(195, 198, 208, 0.3)',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    zIndex: 50,
+    borderBottomColor: 'rgba(196, 198, 208, 0.3)',
+    height: 64,
   },
-  topBarInner: {
+  headerInner: {
+    flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    height: '100%',
+    alignItems: 'center',
     paddingHorizontal: 16,
   },
-  topBarLeft: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    flex: 1,
+    gap: 16,
   },
-  backBtn: {
-    padding: 4,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoImage: {
+  headerLogo: {
     width: 36,
     height: 36,
     resizeMode: 'contain',
   },
-  topBarCenter: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    flex: 2,
-  },
-  topBarTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-    textAlign: 'center',
-  },
-  topBarSubtitle: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 1,
-  },
-  topBarRight: {
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    flex: 1,
-  },
-  topBarIconBtn: {
-    padding: 6,
-    position: 'relative',
   },
   notifBadgeRedDot: {
     position: 'absolute',
-    top: 6,
-    right: 8,
+    top: 10,
+    right: 10,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.secondary,
+    backgroundColor: '#b52424',
     borderWidth: 1.5,
     borderColor: '#ffffff',
+  },
+  iconBtn: {
+    padding: 8,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: 24,
   },
-  subHeaderContainer: {
-    marginBottom: 20,
+  screenTitleWrap: {
+    marginBottom: 24,
   },
-  subHeaderTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.primary,
-    fontFamily: 'Manrope',
+  screenTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#00132d',
     marginBottom: 4,
   },
-  subHeaderLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    opacity: 0.7,
+  screenSubtitle: {
+    fontSize: 14,
+    color: '#43474f',
+    fontWeight: '500',
   },
-  overviewCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 208, 0.3)',
+  highlightCard: {
+    backgroundColor: '#00132d',
     borderRadius: 16,
-    padding: 20,
-    elevation: 3,
-    shadowColor: '#1a3d6d',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    marginBottom: 16,
+    padding: 24,
+    marginBottom: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 8,
   },
-  overviewHeader: {
+  highlightTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 32,
   },
-  overviewLabel: {
-    fontSize: 12,
-    color: Colors.onSurfaceVariant,
+  highlightLabel: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.6)',
     fontWeight: '600',
+    letterSpacing: 2,
     marginBottom: 4,
   },
-  overviewAmount: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Colors.primary,
-    fontFamily: 'Manrope',
-    lineHeight: 38,
+  highlightMonth: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
   },
-  trendBadge: {
+  paidBadge: {
+    backgroundColor: '#10b981',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  trendText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.successGreen,
+  paidBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
-  progressBarBackground: {
-    height: 6,
-    backgroundColor: Colors.surfaceContainer,
-    borderRadius: 99,
-    overflow: 'hidden',
+  highlightMid: {
+    marginBottom: 32,
   },
-  progressBarFilled: {
-    height: '100%',
-    width: '65%',
-    backgroundColor: Colors.primary,
-    borderRadius: 99,
-  },
-  progressBarLabel: {
-    fontSize: 11,
-    color: Colors.onSurfaceVariant,
-    marginTop: 12,
-  },
-  miniCardsGrid: {
+  highlightNetRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
+    alignItems: 'baseline',
+    gap: 8,
   },
-  miniCard: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 208, 0.3)',
-    borderRadius: 16,
-    padding: 16,
-    elevation: 3,
-    shadowColor: '#1a3d6d',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  miniCardIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0, 39, 82, 0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  miniCardLabel: {
-    fontSize: 9,
+  highlightNetVal: {
+    fontSize: 38,
     fontWeight: '800',
-    color: Colors.onSurfaceVariant,
+    color: '#ffffff',
+    letterSpacing: -1,
+  },
+  highlightCurrency: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: 'rgba(171, 199, 252, 0.6)',
+  },
+  highlightBottom: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: 24,
+    marginBottom: 32,
+  },
+  highlightBottomLabel: {
+    fontSize: 10,
+    color: 'rgba(171, 199, 252, 0.6)',
+    fontWeight: '600',
     marginBottom: 4,
   },
-  miniCardValue: {
-    fontSize: 14,
+  highlightBottomVal: {
+    fontSize: 18,
     fontWeight: '700',
-    color: Colors.primary,
+    color: '#ffffff',
   },
-  slipsSection: {
-    gap: 16,
+  downloadBigBtn: {
+    backgroundColor: '#ffffff',
+    height: 52,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
   },
-  slipsHeader: {
+  downloadBigBtnText: {
+    color: '#00132d',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  listSection: {
+    marginBottom: 32,
+  },
+  listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
   },
-  slipsTitle: {
-    fontSize: 16,
+  listHeaderTitle: {
+    fontSize: 18,
     fontWeight: '700',
-    color: Colors.primary,
+    color: '#00132d',
   },
   filterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 208, 0.5)',
-    borderRadius: 99,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 4,
+  },
+  filterBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#00132d',
+  },
+  listWrap: {
+    gap: 16,
+  },
+  noRecordsText: {
+    fontSize: 14,
+    color: '#43474f',
+    textAlign: 'center',
+    marginTop: 20,
+    fontStyle: 'italic',
+  },
+  slipItem: {
     backgroundColor: '#ffffff',
-  },
-  filterText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.onSurface,
-  },
-  slipsList: {
-    gap: 12,
-  },
-  slipCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 208, 0.3)',
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 198, 208, 0.3)',
     overflow: 'hidden',
-    flexDirection: 'row',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 1.5 },
   },
-  generatedAccentLine: {
-    width: 4,
-    backgroundColor: '#fbbf24', // Amber accent line
+  slipItemPending: {
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: 'rgba(196, 198, 208, 0.2)',
+    opacity: 0.8,
   },
-  slipCardInner: {
-    flex: 1,
+  slipHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
   },
-  slipCardLeft: {
+  slipHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
   },
-  dateBox: {
+  slipIconWrap: {
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: Colors.surfaceContainer,
-    alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'column',
+    alignItems: 'center',
   },
-  dateBoxMonth: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  dateBoxYear: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.primary,
-    marginTop: 1,
-  },
-  slipDetails: {
-    flexDirection: 'column',
-    gap: 4,
-  },
-  slipAmount: {
+  slipMonthText: {
     fontSize: 16,
-    fontWeight: '800',
-    color: Colors.primary,
+    fontWeight: '700',
+    color: '#111c2c',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 99,
-    alignSelf: 'flex-start',
+  slipStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
   },
-  statusBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+  slipStatusTextItalic: {
+    fontStyle: 'italic',
   },
-  slipCardRight: {
+  slipHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 16,
+  },
+  netPayCol: {
+    alignItems: 'flex-end',
+    display: 'flex',
+  },
+  netPayLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#43474f',
+    textTransform: 'uppercase',
+  },
+  netPayVal: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#00132d',
+  },
+  expandedContent: {
+    backgroundColor: 'rgba(240, 243, 253, 0.5)',
+  },
+  expandedInner: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(196, 198, 208, 0.1)',
+  },
+  sectionBlock: {},
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+    marginBottom: 16,
+  },
+  sectionTitleText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#00132d',
+    letterSpacing: -0.5,
+  },
+  breakdownList: {
     gap: 12,
   },
-  downloadBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.surfaceContainer,
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  olderHistoryBtn: {
-    width: '100%',
-    paddingVertical: 14,
+  bdLabel: {
+    fontSize: 14,
+    color: '#43474f',
+    fontWeight: '500',
+  },
+  bdValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111c2c',
+  },
+  expandedActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 32,
+  },
+  btnPrint: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#dfe2ec',
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  btnPrintText: {
+    color: '#111c2c',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  btnPdf: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#00132d',
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  btnPdfText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  helpSection: {
+    backgroundColor: 'rgba(0, 19, 45, 0.05)',
     borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(195, 198, 208, 0.4)',
-    borderStyle: 'dashed',
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 19, 45, 0.1)',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
   },
-  olderHistoryBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+  helpIconWrap: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  helpTextWrap: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  helpTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#00132d',
+    marginBottom: 8,
+  },
+  helpSubtitle: {
+    fontSize: 13,
+    color: '#43474f',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  disputeBtn: {
+    backgroundColor: '#00132d',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  disputeBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   bottomNav: {
     position: 'absolute',
@@ -737,10 +866,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: BorderRadius.xl,
+    borderRadius: 16,
   },
   navItemActive: {
-    backgroundColor: Colors.primaryContainer,
+    backgroundColor: '#002752', // Colors.primaryContainer
     borderRadius: 24,
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -748,7 +877,7 @@ const styles = StyleSheet.create({
   navLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.onSurfaceVariant,
+    color: 'rgba(67, 71, 79, 0.7)', // Colors.onSurfaceVariant
     marginTop: 2,
   },
   navLabelActive: {

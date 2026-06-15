@@ -73,7 +73,7 @@ export async function getPayrollRecords(filters?: {
     throw new Error(data.message || 'Failed to fetch payroll list');
   }
 
-  return data.payroll || [];
+  return data.payrolls || [];
 }
 
 /**
@@ -93,7 +93,7 @@ export async function getSalarySlipDetail(id: string): Promise<PayrollRecord> {
     throw new Error(data.message || 'Failed to retrieve salary slip');
   }
 
-  return data.payroll;
+  return data.slip;
 }
 
 /**

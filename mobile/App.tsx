@@ -9,6 +9,7 @@ import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import OtpScreen from './src/screens/OtpScreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
+import RealTimeAttendanceScreen from './src/screens/RealTimeAttendanceScreen';
 import GuardListScreen from './src/screens/GuardListScreen';
 import AddGuardScreen from './src/screens/AddGuardScreen';
 import GuardDetailScreen from './src/screens/GuardDetailScreen';
@@ -65,7 +66,6 @@ import SupervisorDashboardScreen from './src/screens/SupervisorDashboardScreen';
 import VacancyManagementScreen from './src/screens/VacancyManagementScreen';
 import AssignReplacementScreen from './src/screens/AssignReplacementScreen';
 import IncidentReportScreen from './src/screens/IncidentReportScreen';
-import AnalyticsDashboardScreen from './src/screens/AnalyticsDashboardScreen';
 import OperationsDashboardScreen from './src/screens/OperationsDashboardScreen';
 import EscalatedComplaintsScreen from './src/screens/EscalatedComplaintsScreen';
 import RoleManagementScreen from './src/screens/RoleManagementScreen';
@@ -75,6 +75,7 @@ export type RootStackParamList = {
   Login: undefined;
   OtpVerification: { phone: string };
   AdminDashboard: undefined;
+  RealTimeAttendance: undefined;
   GuardList: undefined;
   AddGuard: undefined;
   GuardDetail: { guardId: string };
@@ -142,7 +143,6 @@ export type RootStackParamList = {
   VacancyManagement: undefined;
   AssignReplacement: { vacancyId: string };
   IncidentReport: { siteId?: string };
-  AnalyticsDashboard: undefined;
   OperationsDashboard: undefined;
   EscalatedComplaints: undefined;
   RoleManagement: undefined;
@@ -190,6 +190,11 @@ function AppNavigator() {
           name="AdminDashboard"
           component={AdminDashboardScreen}
           options={{ animation: 'fade_from_bottom' }}
+        />
+        <Stack.Screen
+          name="RealTimeAttendance"
+          component={RealTimeAttendanceScreen}
+          options={{ animation: 'slide_from_right' }}
         />
         <Stack.Screen
           name="GuardList"
@@ -293,7 +298,7 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="GuardHome"
-          component={GuardHomeScreen}
+          component={PersonnelDashboardScreen}
           options={{ animation: 'fade' }}
         />
         <Stack.Screen
@@ -365,7 +370,7 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="SiteDashboard"
-          component={SiteDashboardScreen}
+          component={SiteDetailScreen}
           options={{ animation: 'slide_from_right' }}
         />
         <Stack.Screen
@@ -454,11 +459,6 @@ function AppNavigator() {
           options={{ animation: 'slide_from_bottom' }}
         />
         <Stack.Screen
-          name="AnalyticsDashboard"
-          component={AnalyticsDashboardScreen}
-          options={{ animation: 'fade' }}
-        />
-        <Stack.Screen
           name="OperationsDashboard"
           component={OperationsDashboardScreen}
           options={{ animation: 'fade' }}
@@ -479,10 +479,34 @@ function AppNavigator() {
   );
 }
 
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View } from 'react-native';
+
+function SystemNavBackground() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View 
+      style={{ 
+        position: 'absolute', 
+        bottom: 0, 
+        left: 0, 
+        right: 0, 
+        height: insets.bottom, 
+        backgroundColor: '#FFFFFF', 
+        zIndex: 99999, 
+        pointerEvents: 'none' 
+      }} 
+    />
+  );
+}
+
 export default function App() {
   return (
-    <FontSizeProvider>
-      <AppNavigator />
-    </FontSizeProvider>
+    <SafeAreaProvider>
+      <FontSizeProvider>
+        <AppNavigator />
+        <SystemNavBackground />
+      </FontSizeProvider>
+    </SafeAreaProvider>
   );
 }

@@ -24,6 +24,7 @@ import * as guardService from '../api/guardService';
 import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
 import { useFileUpload } from '../hooks/useFileUpload';
+import CachedImage from '../components/CachedImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -147,49 +148,93 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
   }, [user, navigation]);
 
   const handleUpdateAvatar = async () => {
-    if (!user?.guard_id) return;
-
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is required to take a profile photo. / प्रोफ़ाइल फ़ोटो लेने के लिए कैमरा एक्सेस आवश्यक है।');
+    // Support both guard_id and workforce_personnel_id
+    const personnelId = user?.guard_id || user?.workforce_personnel_id;
+    if (!personnelId) {
+      Alert.alert('Error', 'Unable to identify your profile. Please try logging in again.');
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      cameraType: ImagePicker.CameraType.front,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
+    Alert.alert(
+      'Update Photo / फ़ोटो अपडेट करें',
+      'Choose how to upload: / अपलोड कैसे करें चुनें:',
+      [
+        {
+          text: '📷 Camera / कैमरा',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission Required / अनुमति आवश्यक', 'Camera access is required. / कैमरा एक्सेस आवश्यक है।');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              cameraType: ImagePicker.CameraType.front,
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled && result.assets?.length > 0) {
+              processAvatarUpload(personnelId, result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: '🖼️ Gallery / गैलरी',
+          onPress: async () => {
+            const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission Required / अनुमति आवश्यक', 'Gallery access is required. / गैलरी एक्सेस आवश्यक है।');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            });
+            if (!result.canceled && result.assets?.length > 0) {
+              processAvatarUpload(personnelId, result.assets[0].uri);
+            }
+          },
+        },
+        { text: 'Cancel / रद्द करें', style: 'cancel' },
+      ]
+    );
+  };
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const selectedUri = result.assets[0].uri;
-      setUploadingAvatar(true);
-      try {
-        const uploadRes = await upload({
-          fileUri: selectedUri,
-          category: 'profiles',
-          personnelId: user.guard_id,
-          documentType: 'photo',
-        });
+  const processAvatarUpload = async (personnelId: string, selectedUri: string) => {
+    setUploadingAvatar(true);
+    try {
+      const uploadRes = await upload({
+        fileUri: selectedUri,
+        category: 'profiles',
+        personnelId: personnelId,
+        documentType: 'photo',
+      });
 
-        if (uploadRes.success && uploadRes.url) {
-          await guardService.updateGuard(user.guard_id, {
+      if (uploadRes.success && uploadRes.url) {
+        // Update guard/workforce_personnel table
+        try {
+          await guardService.updateGuard(personnelId, {
             photo_url: uploadRes.url,
           });
-
-          await refreshProfile();
-          setAvatarUri(uploadRes.url);
-          Alert.alert('Success / सफलता', 'Profile photo updated successfully! / प्रोफ़ाइल फ़ोटो सफलतापूर्वक अपडेट हो गई!');
-        } else {
-          Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
+        } catch (updateErr) {
+          // Guard update might fail for workforce_personnel-only users, that's OK
+          // The upload-file edge function already updates workforce_personnel.photo_url
+          console.warn('Guard update fallback:', updateErr);
         }
-      } catch (uploadErr) {
-        console.error('Failed to upload avatar:', uploadErr);
-        Alert.alert('Upload Failed / अपलोड विफल', 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
-      } finally {
-        setUploadingAvatar(false);
+
+        await refreshProfile();
+        setAvatarUri(uploadRes.url);
+        Alert.alert('Success / सफलता', 'Profile photo updated successfully! / प्रोफ़ाइल फ़ोटो सफलतापूर्वक अपडेट हो गई!');
+      } else {
+        Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
       }
+    } catch (uploadErr) {
+      console.error('Failed to upload avatar:', uploadErr);
+      Alert.alert('Upload Failed / अपलोड विफल', 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -308,9 +353,13 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
                   <ActivityIndicator size="small" color={Colors.primary} />
                 </View>
               ) : (
-                <Image
-                  source={{ uri: avatarUri || user?.avatar_url || DEFAULT_AVATAR }}
+                <CachedImage
+                  uri={avatarUri || user?.avatar_url || DEFAULT_AVATAR}
                   style={s.avatarImg}
+                  containerStyle={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                  fallbackIcon="person"
+                  showRetry={false}
                 />
               )}
             </View>
@@ -521,16 +570,86 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
             </View>
             <MaterialIcons name="chevron-right" size={24} color={Colors.onSurfaceVariant} />
           </TouchableOpacity>
-
-          {/* Logout Button */}
-          <TouchableOpacity activeOpacity={0.8} style={s.logoutBtn} onPress={handleLogout}>
-            <View style={s.actionBtnLeft}>
-              <MaterialIcons name="logout" size={22} color={Colors.error} />
-              <Text style={s.logoutBtnText}>Logout / लॉगआउट</Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={24} color="rgba(186, 26, 26, 0.4)" />
-          </TouchableOpacity>
         </View>
+
+        {/* ─── Support Section ─── */}
+        <View style={s.cardWrapper}>
+          <View style={s.cardHeader}>
+            <Text style={s.cardHeaderText}>Support / सहायता</Text>
+            <MaterialIcons name="help-outline" size={20} color={Colors.onSurfaceVariant} />
+          </View>
+          <View style={[s.cardBody, { padding: 0 }]}>
+            {/* Help & FAQ */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={s.supportItem}
+              onPress={() => Alert.alert('Help & FAQ', 'Our help center is currently loading...')}
+            >
+              <View style={s.supportItemLeft}>
+                <MaterialIcons name="help-outline" size={22} color={Colors.primary} />
+                <Text style={s.supportItemText}>Help & FAQ / सहायता और प्रश्न</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
+            </TouchableOpacity>
+
+            {/* Contact Admin */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={s.supportItem}
+              onPress={() =>
+                Alert.alert(
+                  'Contact Admin / व्यवस्थापक से संपर्क',
+                  'Pankaj Kumar\nDirector PIS\nPhone: 7322012345',
+                  [
+                    { text: 'Cancel / रद्द करें', style: 'cancel' },
+                    { text: 'Call / कॉल करें', onPress: () => Linking.openURL('tel:7322012345') }
+                  ]
+                )
+              }
+            >
+              <View style={s.supportItemLeft}>
+                <MaterialIcons name="admin-panel-settings" size={22} color={Colors.primary} />
+                <Text style={s.supportItemText}>Contact Admin / व्यवस्थापक से संपर्क</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
+            </TouchableOpacity>
+
+            {/* Report Issue */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={s.supportItem}
+              onPress={() => Alert.alert('Report Issue', 'Write to us at support@sentinelprime.com')}
+            >
+              <View style={s.supportItemLeft}>
+                <MaterialIcons name="report-problem" size={22} color={Colors.primary} />
+                <Text style={s.supportItemText}>Report Issue / समस्या की रिपोर्ट करें</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
+            </TouchableOpacity>
+
+            {/* About App */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={s.supportItem}
+              onPress={() => Alert.alert('About App', 'PAN INDIA SECURITY & MANPOWER APP developed by team flexirl.com\nVersion 1.0.0')}
+            >
+              <View style={s.supportItemLeft}>
+                <MaterialIcons name="info" size={22} color={Colors.primary} />
+                <Text style={s.supportItemText}>About App / ऐप के बारे में</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color={Colors.outline} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Logout Button */}
+        <TouchableOpacity activeOpacity={0.8} style={s.logoutBtn} onPress={handleLogout}>
+          <View style={s.actionBtnLeft}>
+            <MaterialIcons name="logout" size={22} color={Colors.error} />
+            <Text style={s.logoutBtnText}>Logout / लॉगआउट</Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color="rgba(186, 26, 26, 0.4)" />
+        </TouchableOpacity>
       </ScrollView>
 
       {/* ═══ Bottom Navigation Bar ═══ */}
@@ -980,6 +1099,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: Colors.error,
+  },
+  supportItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  supportItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  supportItemText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.onSurface,
   },
 
   /* ── Bottom Nav ── */

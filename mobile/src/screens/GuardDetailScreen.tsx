@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import Skeleton from '../components/Skeleton';
+import CachedImage from '../components/CachedImage';
 import * as guardService from '../api/guardService';
 import * as siteService from '../api/siteService';
 import * as attendanceService from '../api/attendanceService';
@@ -108,6 +109,9 @@ function ProfileTab({ guard }: { guard: guardService.GuardProfile }) {
           <InfoRow label="Preferred Shift" value={(guard.shift_type || 'rotational').toUpperCase()} />
           <InfoRow label="Height" value={guard.height ? `${guard.height} cm` : 'N/A'} />
           <InfoRow label="Weight" value={guard.weight ? `${guard.weight} kg` : 'N/A'} />
+          <InfoRow label="Date of Birth" value={guard.date_of_birth ? new Date(guard.date_of_birth).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'} />
+          <InfoRow label="Gender" value={(guard.gender || 'male').toUpperCase()} />
+          <InfoRow label="PVR Verified" value={guard.police_verification ? 'YES' : 'NO'} />
           <InfoRow label="Address" value={guard.address || 'N/A'} full />
         </View>
       </View>
@@ -215,10 +219,15 @@ function ProfileTab({ guard }: { guard: guardService.GuardProfile }) {
             </TouchableOpacity>
           </View>
           {viewerImage && (
-            <Image
-              source={{ uri: viewerImage.url }}
+            <CachedImage
+              uri={viewerImage.url}
               style={s.modalImage}
+              containerStyle={s.modalImage}
               resizeMode="contain"
+              fallbackIcon="broken-image"
+              fallbackIconSize={48}
+              fallbackIconColor="rgba(255,255,255,0.5)"
+              showRetry={true}
             />
           )}
         </View>

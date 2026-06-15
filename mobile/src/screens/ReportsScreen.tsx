@@ -120,7 +120,7 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
       case 'bouncers':
         return 'Bouncers';
       case 'helpers':
-        return 'Helpers / Housekeeping';
+        return 'Helpers';
       case 'all':
         return 'All Personnel';
       default:
@@ -345,28 +345,6 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
           ))}
         </View>
 
-        {/* ─── Featured Analysis visual card ─── */}
-        <View style={s.featuredCard}>
-          <Image
-            source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBp4yAJbAI8b_oJ29dNNPEhTBz1TE1HNmOrI1jETBkWlBFF0rHfZTw-_8ahxN8H97kUz_d5kPwcX0m9zZSrd0NxcGkl0vUv6RrnlrJmHjzVlVxrIv6DaaW_qaATRpQj6gvLCUgfLpAwVlY797quJpYxCOElQeR7VBZ0xgSxn93x31CpgEendJ5lgdU0T4fr8wbN3lA_2vas-RmuZmezGlJbY1mVPxZ1a_ydlmV1MDDAiERHL4zEAL7Ck30aA7Kdzuf_XmQ_KSZNg1A' }}
-            style={s.featuredImage as any}
-          />
-          <View style={s.featuredOverlay} />
-          <View style={s.featuredContent}>
-            <Text style={s.featuredTitle}>Advanced Analytics</Text>
-            <Text style={s.featuredText}>
-              Access real-time behavioral patterns and predictive attendance models to optimize deployment.
-            </Text>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={s.trendsBtn}
-              onPress={() => Alert.alert('Advanced Analytics', 'Opening dashboard analytics dashboard...')}
-            >
-              <Text style={s.trendsBtnText}>EXPLORE TRENDS</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -565,7 +543,7 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
       )}
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'more';
           return (

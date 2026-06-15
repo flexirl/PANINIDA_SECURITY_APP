@@ -28,11 +28,11 @@ const LOGO_URL =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCRyhUcTQWkIXJhYfiYHNsCWBHbHW-BmdKstBO-GTXBU8GREShei1cC7zxtCgfILG4L14WEnclS8-skHvaUwmfBQ24vnZwIANui91FPIfw-PStCPxGYhYTt873ArflucH4XT1zX_J3gx43ROSeEJ2bPa1gbSTw8c5bcrmEkC36obgQe0Z0Wrlq7ODX_WCNqg-PdCBxe4CZZO3KsClAQ_LGoGJO9p_2uEFwdrMeaMPyNxGYJvT2hzczjcUAt081W7V5pJAsvlwUnaF0';
 
 // ── Helper Functions ───────────────────────────────────────────
-const getGreeting = (): string => {
+const getGreeting = (): { en: string; hi: string } => {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good Morning';
-  if (hour < 17) return 'Good Afternoon';
-  return 'Good Evening';
+  if (hour < 12) return { en: 'Good Morning', hi: 'शुभ प्रभात' };
+  if (hour < 17) return { en: 'Good Afternoon', hi: 'शुभ दोपहर' };
+  return { en: 'Good Evening', hi: 'शुभ संध्या' };
 };
 
 const formatTime12 = (dateStr: string): string => {
@@ -143,9 +143,11 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
 
   const loadData = async () => {
     try {
-      await refreshProfile();
+      const freshProfile = await refreshProfile();
+      const currentUser = freshProfile || user;
+      const currentPersonnelId = currentUser?.guard_id || (currentUser as any)?.workforce_personnel_id;
 
-      if (!personnelId) {
+      if (!currentPersonnelId) {
         setLoading(false);
         return;
       }
@@ -154,7 +156,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       const { data: wp } = await supabase
         .from('workforce_personnel')
         .select('id, name, employee_id, base_salary, shift_type, photo_url, category:workforce_categories(name)')
-        .eq('id', personnelId)
+        .eq('id', currentPersonnelId)
         .single();
 
       if (wp) {
@@ -170,9 +172,9 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       }
 
       // 2. Current site assignment
-      if (user?.current_assignment?.site_id) {
+      if (currentUser?.current_assignment?.site_id) {
         try {
-          const site = await siteService.getSiteDetail(user.current_assignment.site_id);
+          const site = await siteService.getSiteDetail(currentUser.current_assignment.site_id);
           setSiteDetails(site);
         } catch {
           // Site might not exist
@@ -184,7 +186,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       const { data: todayAtt } = await supabase
         .from('workforce_attendance')
         .select('id, check_in_time, check_out_time, status')
-        .eq('personnel_id', personnelId)
+        .eq('personnel_id', currentPersonnelId)
         .eq('attendance_date', todayStr)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -200,16 +202,16 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       const { data: monthAtt } = await supabase
         .from('workforce_attendance')
         .select('status')
-        .eq('personnel_id', personnelId)
+        .eq('personnel_id', currentPersonnelId)
         .gte('attendance_date', monthStartStr)
         .lte('attendance_date', todayStr);
 
       if (monthAtt) {
         let p = 0, a = 0, l = 0;
         monthAtt.forEach((r: any) => {
-          if (r.status === 'present') p++;
-          else if (r.status === 'absent') a++;
-          else if (r.status === 'late') l++;
+          if (r.status === 'present' || r.status === 'present_late') p++;
+          if (r.status === 'late' || r.status === 'present_late') l++;
+          if (r.status === 'absent') a++;
         });
         setAttendanceStats({ present: p, absent: a, late: l, total_days: monthAtt.length });
       }
@@ -218,7 +220,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       const { data: docs } = await supabase
         .from('workforce_documents')
         .select('id, verified')
-        .eq('personnel_id', personnelId);
+        .eq('personnel_id', currentPersonnelId);
 
       if (docs) {
         setDocumentCount({
@@ -231,7 +233,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       const { data: recentAtt } = await supabase
         .from('workforce_attendance')
         .select('id, attendance_date, check_in_time, check_out_time, status')
-        .eq('personnel_id', personnelId)
+        .eq('personnel_id', currentPersonnelId)
         .order('attendance_date', { ascending: false })
         .limit(5);
 
@@ -242,7 +244,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             activities.push({
               id: `${att.id}-out`,
               type: 'check_out',
-              title: 'Shift Check-out',
+              title: 'Shift Check-out / शिफ्ट चेक-आउट',
               subtitle: `${formatDate(att.attendance_date)}, ${formatTime12(att.check_out_time)}`,
               icon: 'logout',
               iconBg: '#FFF3E0',
@@ -254,7 +256,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             activities.push({
               id: `${att.id}-in`,
               type: 'check_in',
-              title: 'Shift Check-in',
+              title: 'Shift Check-in / शिफ्ट चेक-इन',
               subtitle: `${formatDate(att.attendance_date)}, ${formatTime12(att.check_in_time)}`,
               icon: 'login',
               iconBg: '#E3F2FD',
@@ -302,8 +304,8 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
 
   // ── Bottom Nav ──────────────────────────────────────────────
   const navItems = [
-    { key: 'home', icon: 'home' as const, label: 'Home' },
-    { key: 'attendance', icon: 'calendar-today' as const, label: 'Attendance' },
+    { key: 'home', icon: 'dashboard' as const, label: 'Home' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
     { key: 'salary', icon: 'payments' as const, label: 'Salary' },
     { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
@@ -320,7 +322,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       <View style={s.loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={s.loadingText}>Loading your dashboard...</Text>
+        <Text style={s.loadingText}>Loading your dashboard... / आपका डैशबोर्ड लोड हो रहा है...</Text>
       </View>
     );
   }
@@ -377,7 +379,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               <View style={s.onlineDot} />
             </View>
             <View style={s.greetingInfo}>
-              <Text style={s.greetingLabel}>{getGreeting()}</Text>
+              <Text style={s.greetingLabel}>{getGreeting().en} / {getGreeting().hi}</Text>
               <Text style={s.greetingName} numberOfLines={1}>{firstName}</Text>
               <View style={s.categoryBadge}>
                 <Text style={s.categoryBadgeText}>{categoryLabel.toUpperCase()}</Text>
@@ -389,7 +391,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             </View>
           </View>
         </Animated.View>
-
+ 
         {/* ─── Current Site & Check-In Card ─── */}
         <View style={s.siteCard}>
           <View style={s.siteHeaderContainer}>
@@ -398,20 +400,20 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.siteName} numberOfLines={1}>
-                {siteDetails?.site_name || 'Not Assigned'}
+                {siteDetails?.site_name || 'Not Assigned / आवंटित नहीं'}
               </Text>
               <View style={s.shiftRow}>
                 <MaterialIcons name="schedule" size={15} color={Colors.onSurfaceVariant} />
                 <Text style={s.shiftTimeText}>{shiftLabel}</Text>
                 <View style={s.shiftBadge}>
                   <Text style={s.shiftBadgeText}>
-                    {(personnelProfile?.shift_type || 'day').toUpperCase()}
+                    {personnelProfile?.shift_type === 'night' ? 'NIGHT / रात' : 'DAY / दिन'}
                   </Text>
                 </View>
               </View>
             </View>
           </View>
-
+ 
           {/* Check-in / Out Button */}
           <TouchableOpacity
             activeOpacity={0.9}
@@ -437,10 +439,10 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             />
             <Text style={s.checkInBtnText}>
               {checkInStatus === 'shift_complete'
-                ? 'SHIFT COMPLETE'
+                ? 'SHIFT COMPLETE / पाली समाप्त'
                 : checkInStatus === 'checked_in'
-                ? `CHECKED IN • ${todayRecord?.check_in_time ? formatTime12(todayRecord.check_in_time) : ''}`
-                : 'CHECK IN NOW'}
+                ? `CHECKED IN / उपस्थित • ${todayRecord?.check_in_time ? formatTime12(todayRecord.check_in_time) : ''}`
+                : 'CHECK IN NOW / उपस्थिति दर्ज करें'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -458,6 +460,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               )}
             </View>
             <Text style={s.statLabel}>DAYS PRESENT</Text>
+            <Text style={s.statSubLabel}>उपस्थित दिन</Text>
             <Text style={s.statValue}>
               {attendanceStats.present}
               <Text style={s.statValueSlash}>/26</Text>
@@ -472,9 +475,10 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               </View>
             </View>
             <Text style={s.statLabel}>ABSENT</Text>
+            <Text style={s.statSubLabel}>अनुपस्थित</Text>
             <Text style={[s.statValue, attendanceStats.absent > 0 && { color: Colors.dangerRed }]}>
               {attendanceStats.absent}
-              <Text style={s.statValueSlash}> days</Text>
+              <Text style={s.statValueSlash}> days / दिन</Text>
             </Text>
           </View>
         </View>
@@ -488,8 +492,12 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               </View>
             </View>
             <Text style={s.statLabel}>EARNINGS</Text>
-            <Text style={s.statValue}>
-              ₹{monthlyEarnings.toLocaleString('en-IN')}
+            <Text style={s.statSubLabel}>कमाई</Text>
+            <Text style={s.earningsText}>
+              Will be available at end of month
+            </Text>
+            <Text style={s.earningsTextHindi}>
+              महीने के अंत में उपलब्ध होगा
             </Text>
           </View>
 
@@ -501,6 +509,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               </View>
             </View>
             <Text style={s.statLabel}>DOCUMENTS</Text>
+            <Text style={s.statSubLabel}>दस्तावेज़</Text>
             <Text style={s.statValue}>
               {documentCount.verified}
               <Text style={s.statValueSlash}>/{documentCount.total}</Text>
@@ -510,7 +519,10 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
 
         {/* ─── Quick Actions ─── */}
         <View style={s.quickActionsSection}>
-          <Text style={s.sectionTitle}>Quick Actions</Text>
+          <View>
+            <Text style={s.sectionTitle}>Quick Actions</Text>
+            <Text style={s.sectionSubTitle}>त्वरित कार्रवाई</Text>
+          </View>
           <View style={s.quickActionsRow}>
             <TouchableOpacity
               style={s.quickActionItem}
@@ -521,6 +533,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
                 <MaterialIcons name="history" size={24} color="#1565C0" />
               </View>
               <Text style={s.quickActionLabel}>History</Text>
+              <Text style={s.quickActionLabelHindi}>इतिहास</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -532,6 +545,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
                 <MaterialIcons name="receipt-long" size={24} color="#2E7D32" />
               </View>
               <Text style={s.quickActionLabel}>Salary Slips</Text>
+              <Text style={s.quickActionLabelHindi}>वेतन पर्ची</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -543,6 +557,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
                 <MaterialIcons name="folder-open" size={24} color="#EF6C00" />
               </View>
               <Text style={s.quickActionLabel}>Documents</Text>
+              <Text style={s.quickActionLabelHindi}>दस्तावेज़</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -554,6 +569,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
                 <MaterialIcons name="badge" size={24} color="#7B1FA2" />
               </View>
               <Text style={s.quickActionLabel}>My Profile</Text>
+              <Text style={s.quickActionLabelHindi}>मेरी प्रोफ़ाइल</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -561,9 +577,12 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
         {/* ─── Recent Activity ─── */}
         <View style={s.activitySection}>
           <View style={s.activityHeader}>
-            <Text style={s.sectionTitle}>Recent Activity</Text>
+            <View>
+              <Text style={s.sectionTitle}>Recent Activity</Text>
+              <Text style={s.sectionSubTitle}>हाल की गतिविधि</Text>
+            </View>
             <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('GuardAttendanceHistory')}>
-              <Text style={s.viewAllLink}>View All</Text>
+              <Text style={s.viewAllLink}>View All / सभी देखें</Text>
             </TouchableOpacity>
           </View>
 
@@ -572,6 +591,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               <View style={s.emptyActivity}>
                 <MaterialIcons name="inbox" size={36} color={Colors.surfaceDim} />
                 <Text style={s.emptyActivityText}>No recent activity</Text>
+                <Text style={s.emptyActivityTextHindi}>कोई हाल की गतिविधि नहीं</Text>
               </View>
             ) : (
               recentActivity.map((item, idx) => (
@@ -605,7 +625,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       </ScrollView>
 
       {/* ═══ Bottom Navigation Bar ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'home';
           return (
@@ -942,6 +962,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
+  statSubLabel: {
+    fontSize: 10,
+    color: Colors.onSurfaceVariant,
+    opacity: 0.6,
+    marginTop: 1,
+  },
   statValue: {
     fontSize: 26,
     fontWeight: '800',
@@ -955,6 +981,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontFamily: 'Inter',
   },
+  earningsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+    fontFamily: 'Inter',
+    marginTop: 6,
+    lineHeight: 16,
+  },
+  earningsTextHindi: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: Colors.outline,
+    fontFamily: 'Inter',
+    marginTop: 2,
+    lineHeight: 14,
+  },
 
   // ── Quick Actions ──
   quickActionsSection: {
@@ -965,6 +1007,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
     fontFamily: 'Manrope',
+  },
+  sectionSubTitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.outline,
+    fontFamily: 'Inter',
+    marginTop: 1,
   },
   quickActionsRow: {
     flexDirection: 'row',
@@ -998,6 +1047,14 @@ const styles = StyleSheet.create({
     color: Colors.onSurface,
     fontFamily: 'Inter',
     textAlign: 'center',
+  },
+  quickActionLabelHindi: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: Colors.outline,
+    fontFamily: 'Inter',
+    textAlign: 'center',
+    marginTop: 1,
   },
 
   // ── Activity Section ──
@@ -1070,6 +1127,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.outline,
     fontWeight: '500',
+  },
+  emptyActivityTextHindi: {
+    fontSize: 12,
+    color: Colors.outline,
+    fontWeight: '400',
+    opacity: 0.8,
   },
 
   // ── Bottom Nav ──

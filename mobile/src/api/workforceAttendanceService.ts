@@ -27,14 +27,51 @@ function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: num
 }
 
 /**
+ * Helper: Parse a time string "HH:MM" into total minutes since midnight.
+ */
+function parseTimeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+/**
+ * Helper: Determine if a check-in time is late relative to shift start.
+ * Handles overnight (night) shifts that cross midnight.
+ */
+function isCheckInLate(
+  checkInDate: Date,
+  shiftStartStr: string,
+  lateThresholdMinutes: number
+): { isLate: boolean; minutesLate: number } {
+  const currentMinutes = checkInDate.getHours() * 60 + checkInDate.getMinutes();
+  const shiftStart = parseTimeToMinutes(shiftStartStr);
+  const lateAfter = shiftStart + lateThresholdMinutes;
+
+  // Simple day-shift case: check if current time exceeds shift_start + threshold
+  let minutesLate = currentMinutes - shiftStart;
+
+  // Handle overnight wrap (e.g., shift starts 20:00, guard checks in at 01:00 next day)
+  if (minutesLate < -720) {
+    // Guard is checking in after midnight for a night shift that started yesterday
+    minutesLate += 1440;
+  }
+
+  return {
+    isLate: minutesLate > lateThresholdMinutes,
+    minutesLate: Math.max(0, minutesLate),
+  };
+}
+
+/**
  * Task 23.1: Performs check-in for workforce personnel.
- * For categories where attendance is required, validates that the coordinates
- * are within the site's geofence radius.
+ * - Validates geofence (if attendance is required for the category)
+ * - Detects LATE check-in based on site's shift timing + configurable threshold
+ * - Stores check-in selfie and GPS coordinates
  */
 export async function checkIn(data: {
   personnel_id: string;
   site_id: string;
-  shift_type: ShiftType;
+  shift_type?: ShiftType;
   latitude?: number;
   longitude?: number;
   selfie_url?: string;
@@ -42,7 +79,7 @@ export async function checkIn(data: {
   // 1. Fetch personnel category details
   const { data: personnel, error: pError } = await supabase
     .from('workforce_personnel')
-    .select('id, category:workforce_categories(attendance_required)')
+    .select('id, shift_type, category:workforce_categories(attendance_required)')
     .eq('id', data.personnel_id)
     .single();
 
@@ -51,21 +88,23 @@ export async function checkIn(data: {
   }
 
   const attendanceRequired = (personnel as any).category?.attendance_required ?? true;
+  const shiftType = data.shift_type || (personnel as any).shift_type || 'day';
 
-  // 2. Validate geofence if required
+  // 2. Fetch site details (geofence + shift timings + thresholds)
+  const { data: site, error: sError } = await supabase
+    .from('sites')
+    .select('latitude, longitude, geofence_radius, day_shift_start, day_shift_end, night_shift_start, night_shift_end, late_threshold_minutes, min_hours_present, min_hours_half_day')
+    .eq('id', data.site_id)
+    .single();
+
+  if (sError || !site) {
+    throw new Error('Deployment site not found.');
+  }
+
+  // 3. Validate geofence if required
   if (attendanceRequired) {
     if (data.latitude === undefined || data.longitude === undefined) {
       throw new Error('Geofence check failed: Location coordinates are required for check-in.');
-    }
-
-    const { data: site, error: sError } = await supabase
-      .from('sites')
-      .select('latitude, longitude, geofence_radius')
-      .eq('id', data.site_id)
-      .single();
-
-    if (sError || !site) {
-      throw new Error('Deployment site not found.');
     }
 
     const distance = getDistanceInMeters(
@@ -88,22 +127,35 @@ export async function checkIn(data: {
     }
   }
 
-  // 3. Insert check-in record
-  const todayStr = new Date().toISOString().split('T')[0];
+  // 4. Determine if check-in is LATE based on shift timing
+  const now = new Date();
+  const shiftStartStr = shiftType === 'night'
+    ? (site.night_shift_start || '20:00')
+    : (site.day_shift_start || '08:00');
+  const lateThreshold = site.late_threshold_minutes ?? 120;
+
+  const lateCheck = isCheckInLate(now, shiftStartStr, lateThreshold);
+  const status: AttendanceStatus = lateCheck.isLate ? 'late' : 'present';
+
+  // 5. Insert check-in record
+  const todayStr = now.toISOString().split('T')[0];
 
   const { data: created, error } = await supabase
     .from('workforce_attendance')
     .insert({
       personnel_id: data.personnel_id,
       site_id: data.site_id,
-      shift_type: data.shift_type,
+      shift_type: shiftType,
       attendance_date: todayStr,
-      check_in_time: new Date().toISOString(),
+      check_in_time: now.toISOString(),
       check_in_selfie: data.selfie_url || null,
       check_in_latitude: data.latitude || null,
       check_in_longitude: data.longitude || null,
-      status: 'present',
-      is_manual_entry: false
+      status,
+      is_manual_entry: false,
+      remarks: lateCheck.isLate
+        ? `Late by ${Math.floor(lateCheck.minutesLate / 60)}h ${lateCheck.minutesLate % 60}m`
+        : null,
     })
     .select()
     .single();
@@ -116,20 +168,30 @@ export async function checkIn(data: {
   return created;
 }
 
+
 /**
- * Task 23.2: Performs check-out.
- * Automatically computes hours_worked.
+ * Task 23.2: Performs check-out for workforce personnel.
+ * - Validates geofence on check-out (must be inside site boundary)
+ * - Requires check-out selfie
+ * - Calculates hours worked from check_in_time to now
+ * - Determines final attendance status based on hours worked + late flag:
+ *     < min_hours_half_day → absent
+ *     min_hours_half_day..min_hours_present → half_day
+ *     ≥ min_hours_present + was on-time → present
+ *     ≥ min_hours_present + was late → present_late
  */
 export async function checkOut(
   attendanceId: string,
   data: {
+    latitude?: number;
+    longitude?: number;
     selfie_url?: string;
   }
 ): Promise<WorkforceAttendance> {
-  // 1. Fetch check-in details
+  // 1. Fetch full check-in record + site details for geofence & thresholds
   const { data: record, error: fetchErr } = await supabase
     .from('workforce_attendance')
-    .select('check_in_time')
+    .select('check_in_time, status, site_id, personnel_id')
     .eq('id', attendanceId)
     .single();
 
@@ -137,20 +199,82 @@ export async function checkOut(
     throw new Error('Attendance check-in record not found.');
   }
 
+  // 2. Fetch site for geofence + threshold config
+  const { data: site, error: sError } = await supabase
+    .from('sites')
+    .select('latitude, longitude, geofence_radius, min_hours_present, min_hours_half_day')
+    .eq('id', record.site_id)
+    .single();
+
+  if (sError || !site) {
+    throw new Error('Deployment site not found.');
+  }
+
+  // 3. Validate geofence on check-out
+  if (data.latitude !== undefined && data.longitude !== undefined) {
+    const distance = getDistanceInMeters(
+      data.latitude,
+      data.longitude,
+      Number(site.latitude),
+      Number(site.longitude)
+    );
+
+    const radius = site.geofence_radius || 100;
+
+    if (distance > radius) {
+      throw new Error(
+        `Cannot check out — you are outside the geofence!\n` +
+        `Distance from site: ${Math.round(distance)}m (max ${radius}m)\n` +
+        `Please return to the site boundary before checking out.\n` +
+        `चेक आउट नहीं कर सकते — आप सीमा के बाहर हैं!`
+      );
+    }
+  } else {
+    throw new Error(
+      'Location coordinates are required for check-out.\n' +
+      'चेक आउट के लिए GPS स्थान आवश्यक है।'
+    );
+  }
+
+  // 4. Calculate hours worked
   const now = new Date();
   const checkInTime = new Date(record.check_in_time!);
-  
-  // Hours worked calculation (diff in milliseconds divided by hours conversion)
   const diffHours = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
   const hoursWorked = Number(Math.max(0, diffHours).toFixed(2));
 
-  // 2. Update record
+  // 6. Determine final status based on hours worked + check-in late flag
+  const wasLateCheckIn = record.status === 'late';
+  const minPresent = site.min_hours_present ?? 7;
+  const minHalfDay = site.min_hours_half_day ?? 4;
+
+  let finalStatus: AttendanceStatus;
+  if (hoursWorked < minHalfDay) {
+    finalStatus = 'absent';
+  } else if (hoursWorked < minPresent) {
+    finalStatus = 'half_day';
+  } else {
+    finalStatus = wasLateCheckIn ? 'present_late' : 'present';
+  }
+
+  // 7. Build remarks
+  const hoursH = Math.floor(hoursWorked);
+  const hoursM = Math.round((hoursWorked - hoursH) * 60);
+  let remarks = `Worked ${hoursH}h ${hoursM}m`;
+  if (wasLateCheckIn) {
+    remarks += ' (checked in late)';
+  }
+
+  // 8. Update record with check-out data
   const { data: updated, error } = await supabase
     .from('workforce_attendance')
     .update({
       check_out_time: now.toISOString(),
-      check_out_selfie: data.selfie_url || null,
-      hours_worked: hoursWorked
+      check_out_selfie: data.selfie_url,
+      check_out_latitude: data.latitude,
+      check_out_longitude: data.longitude,
+      hours_worked: hoursWorked,
+      status: finalStatus,
+      remarks,
     })
     .eq('id', attendanceId)
     .select()

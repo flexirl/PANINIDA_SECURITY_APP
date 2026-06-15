@@ -7,7 +7,7 @@ export interface AuthUser {
   id: string;
   name: string;
   phone: string;
-  role: "admin" | "manager" | "recruiter" | "guard";
+  role: "admin" | "manager" | "recruiter" | "guard" | "workforce_personnel" | string;
   is_active: boolean;
   guard_id?: string; // populated if role is 'guard'
 }
@@ -94,13 +94,13 @@ export async function authenticateRequest(
     is_active: userData.is_active,
   };
 
-  // If guard, also fetch guard_id
-  if (user.role === "guard") {
+  // If guard or workforce_personnel, also fetch guard_id
+  if (user.role === "guard" || user.role === "workforce_personnel") {
     const { data: guardData } = await supabase
-      .from("guards")
+      .from("workforce_personnel")
       .select("id")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (guardData) {
       user.guard_id = guardData.id;

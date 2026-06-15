@@ -210,6 +210,12 @@ export async function createPersonnel(data: {
   pan_number?: string;
   address?: string;
   photo_url?: string;
+  gender?: string;
+  date_of_birth?: string;
+  police_verification?: boolean;
+  height?: number;
+  weight?: number;
+  education?: string;
 }): Promise<WorkforcePersonnel> {
   // Step 1: Ensure user record exists in users table and validate uniqueness
   let userId: string;
@@ -289,7 +295,13 @@ export async function createPersonnel(data: {
       bank_name: data.bank_name || null,
       aadhaar_number: data.aadhaar_number || null,
       pan_number: data.pan_number || null,
-      address: data.address || null
+      address: data.address || null,
+      gender: data.gender || 'male',
+      date_of_birth: data.date_of_birth || null,
+      police_verification: data.police_verification || false,
+      height: data.height || null,
+      weight: data.weight || null,
+      education: data.education || null
     })
     .select()
     .single();
@@ -318,7 +330,13 @@ export async function createPersonnel(data: {
         bank_account_number: data.bank_account_number || null,
         bank_ifsc: data.bank_ifsc || null,
         bank_name: data.bank_name || null,
-        employment_status: 'active'
+        employment_status: 'active',
+        gender: data.gender || 'male',
+        date_of_birth: data.date_of_birth || null,
+        police_verification: data.police_verification || false,
+        height: data.height || null,
+        weight: data.weight || null,
+        education: data.education || null
       });
 
     if (guardError) {
@@ -389,7 +407,13 @@ export async function updatePersonnel(
         bank_account_number: updated.bank_account_number,
         bank_ifsc: updated.bank_ifsc,
         bank_name: updated.bank_name,
-        employment_status: updated.employment_status
+        employment_status: updated.employment_status,
+        gender: updated.gender,
+        date_of_birth: updated.date_of_birth,
+        police_verification: updated.police_verification,
+        height: updated.height,
+        weight: updated.weight,
+        education: updated.education
       })
       .eq('id', id);
 

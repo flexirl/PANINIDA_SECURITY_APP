@@ -194,15 +194,15 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
       const categoryGroups = new Set<CategoryFilterType>();
       
       sitePersonnel.forEach((sp: any) => {
-        const categoryName = sp.personnel?.category?.name;
+        const categoryName = sp.personnel?.category?.name?.toLowerCase();
         if (!categoryName) return;
 
         // Map category names to category groups
-        if (categoryName === 'Guard') {
+        if (categoryName.includes('guard')) {
           categoryGroups.add('guards');
-        } else if (['Gunman', 'Rifleman', 'PSO'].includes(categoryName)) {
+        } else if (categoryName.includes('gunman') || categoryName.includes('rifleman') || categoryName.includes('pso')) {
           categoryGroups.add('gunmen');
-        } else if (categoryName === 'Bouncer') {
+        } else if (categoryName.includes('bouncer')) {
           categoryGroups.add('bouncers');
         } else {
           // Non-security categories (housekeeping, etc.)
@@ -269,7 +269,7 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
       
       sitePersonnel.forEach((sp: any) => {
         const categoryId = sp.personnel?.category_id;
-        const categoryName = sp.personnel?.category?.name;
+        const categoryName = sp.personnel?.category?.name?.toLowerCase();
         
         if (!categoryName || !categoryId) return;
 
@@ -277,11 +277,11 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
         uniqueCategoryIds.add(categoryId);
 
         // Map category names to category groups
-        if (categoryName === 'Guard') {
+        if (categoryName.includes('guard')) {
           categoryGroups.add('guards');
-        } else if (['Gunman', 'Rifleman', 'PSO'].includes(categoryName)) {
+        } else if (categoryName.includes('gunman') || categoryName.includes('rifleman') || categoryName.includes('pso')) {
           categoryGroups.add('gunmen');
-        } else if (categoryName === 'Bouncer') {
+        } else if (categoryName.includes('bouncer')) {
           categoryGroups.add('bouncers');
         } else {
           // Non-security categories (housekeeping, etc.)
@@ -344,17 +344,23 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
     
     switch (catType) {
       case 'guards':
-        categoryIds = categories.filter(c => c.name === 'Guard').map(c => c.id);
+        categoryIds = categories.filter(c => c.name.toLowerCase().includes('guard')).map(c => c.id);
         break;
       case 'gunmen':
-        categoryIds = categories.filter(c => ['Gunman', 'Rifleman', 'PSO'].includes(c.name)).map(c => c.id);
+        categoryIds = categories.filter(c => {
+          const n = c.name.toLowerCase();
+          return n.includes('gunman') || n.includes('rifleman') || n.includes('pso');
+        }).map(c => c.id);
         break;
       case 'bouncers':
-        categoryIds = categories.filter(c => c.name === 'Bouncer').map(c => c.id);
+        categoryIds = categories.filter(c => c.name.toLowerCase().includes('bouncer')).map(c => c.id);
         break;
       case 'helpers':
-        const securityCatNames = ['Guard', 'Gunman', 'Rifleman', 'PSO', 'Bouncer', 'Supervisor', 'Security Officer'];
-        categoryIds = categories.filter(c => !securityCatNames.includes(c.name)).map(c => c.id);
+        const securityCatNames = ['guard', 'gunman', 'rifleman', 'pso', 'bouncer', 'supervisor', 'officer'];
+        categoryIds = categories.filter(c => {
+          const n = c.name.toLowerCase();
+          return !securityCatNames.some(sn => n.includes(sn));
+        }).map(c => c.id);
         break;
       case 'all':
       default:
@@ -429,7 +435,7 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
       case 'helpers':
         switch (type) {
           case 'singular': return 'Helper';
-          case 'plural': return 'Helpers / Housekeeping';
+          case 'plural': return 'Helpers';
           case 'employee_id': return 'Helper ID';
           case 'onboard': return 'Onboard Helper';
           case 'assign': return 'Assign Helper';

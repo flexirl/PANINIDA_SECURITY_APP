@@ -20,6 +20,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { useAuth } from '../hooks/useAuth';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import { useFileUpload } from '../hooks/useFileUpload';
+import CachedImage from '../components/CachedImage';
 
 export default function ProfileScreen({ navigation }: { navigation: any }) {
   const s = useScaledStyles(styles);
@@ -216,7 +217,15 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         <View style={s.profileHeader}>
           <View style={s.avatarWrap}>
             <View style={s.avatarBorder}>
-              <Image source={{ uri: avatar }} style={s.avatarImage as any} />
+              <CachedImage
+                uri={avatar}
+                style={s.avatarImage as any}
+                containerStyle={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+                fallbackIcon="person"
+                fallbackIconSize={48}
+                showRetry={false}
+              />
             </View>
             <TouchableOpacity
               activeOpacity={0.85}
@@ -415,7 +424,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
       </View>
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'more';
           return (

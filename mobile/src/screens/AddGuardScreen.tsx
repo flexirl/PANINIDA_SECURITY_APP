@@ -298,6 +298,8 @@ export default function AddGuardScreen({ navigation }: AddGuardScreenProps) {
         employment_status: 'active' as const,
         photo_url: docs.photo || undefined,
         aadhaar_number: cleanAadhaar,
+        gender: gender || undefined,
+        date_of_birth: dob || undefined,
         // Bank details
         bank_account_number: bankAccountNumber || undefined,
         bank_ifsc: bankIfsc ? bankIfsc.toUpperCase() : undefined,

@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -45,7 +46,44 @@ interface Guard {
   site: string;
   shift: ShiftType;
   employee_id?: string;
+  gender?: string;
+  date_of_birth?: string;
+  height?: number;
+  education?: string;
+  joining_date?: string;
 }
+
+const calculateAge = (dobString?: string) => {
+  if (!dobString) return 0;
+  try {
+    const birthDate = new Date(dobString);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age < 0 ? 0 : age;
+  } catch (e) {
+    return 0;
+  }
+};
+
+const calculateExperience = (joiningDateString?: string) => {
+  if (!joiningDateString) return 0;
+  try {
+    const joinDate = new Date(joiningDateString);
+    const today = new Date();
+    let years = today.getFullYear() - joinDate.getFullYear();
+    const m = today.getMonth() - joinDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < joinDate.getDate())) {
+      years--;
+    }
+    return years < 0 ? 0 : years;
+  } catch (e) {
+    return 0;
+  }
+};
 
 interface GuardListScreenProps {
   navigation: any;
@@ -220,6 +258,23 @@ function GuardCard({ guard, index, onPress }: { guard: Guard; index: number; onP
 export default function GuardListScreen({ navigation }: GuardListScreenProps) {
   const s = useScaledStyles(styles);
   const insets = useSafeAreaInsets();
+  
+  const renderFilterChip = (label: string, isSelected: boolean, onPress: () => void) => (
+    <TouchableOpacity
+      key={label}
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={[
+        s.filterChip,
+        isSelected && s.filterChipActive
+      ]}
+    >
+      <Text style={[s.filterChipText, isSelected && s.filterChipTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+
   const { getLabel } = usePersonnelCategory();
   const [guards, setGuards] = useState<Guard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,6 +283,24 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
   const [activeFilter, setActiveFilter] = useState<FilterChip>('all');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+
+  // Advanced Filters & Sorting
+  const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
+  const [ageFilter, setAgeFilter] = useState<string>('all');
+  const [heightFilter, setHeightFilter] = useState<string>('all');
+  const [educationFilter, setEducationFilter] = useState<string>('all');
+  const [experienceFilter, setExperienceFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('name_asc');
+
+  const resetFilters = () => {
+    setActiveFilter('all');
+    setGenderFilter('all');
+    setAgeFilter('all');
+    setHeightFilter('all');
+    setEducationFilter('all');
+    setExperienceFilter('all');
+    setSortBy('name_asc');
+  };
 
   // FAB animation
   const fabScale = useRef(new Animated.Value(0)).current;
@@ -243,7 +316,7 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
         }),
         (async () => {
           try {
-            const { data } = await supabase.from('workforce_personnel').select('id, employee_id');
+            const { data } = await supabase.from('workforce_personnel').select('id, employee_id, gender, date_of_birth, height, education, joining_date');
             return data || [];
           } catch (err) {
             return [];
@@ -251,10 +324,10 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
         })(),
       ]);
 
-      // Build employee_id lookup from workforce_personnel
-      const employeeIdMap: { [id: string]: string } = {};
+      // Build lookup map from workforce_personnel
+      const wpLookupMap: { [id: string]: any } = {};
       (wpRecords as any[]).forEach((wp: any) => {
-        if (wp.employee_id) employeeIdMap[wp.id] = wp.employee_id;
+        wpLookupMap[wp.id] = wp;
       });
 
       // Map assignments to dynamic active site strings
@@ -279,6 +352,7 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
           ? (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
           : nameParts[0].substring(0, 2).toUpperCase();
 
+        const wpData = wpLookupMap[g.id] || {};
         return {
           id: g.id,
           name: g.name,
@@ -288,7 +362,12 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
           initials,
           site: siteName,
           shift: g.employment_status === 'inactive' || g.employment_status === 'terminated' ? 'on-leave' : shift,
-          employee_id: employeeIdMap[g.id],
+          employee_id: wpData.employee_id,
+          gender: wpData.gender,
+          date_of_birth: wpData.date_of_birth,
+          height: wpData.height,
+          education: wpData.education,
+          joining_date: wpData.joining_date || g.joining_date,
         };
       });
 
@@ -347,18 +426,100 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
     { key: 'terminated', label: 'Terminated' },
   ];
 
-  // Filter + search logic
+  // Filter + search + sort logic
   const filteredGuards = useMemo(() => {
-    return guards.filter((guard) => {
+    let result = guards.filter((guard) => {
       const matchesFilter = activeFilter === 'all' || guard.status === activeFilter;
       const matchesSearch =
         searchQuery === '' ||
         guard.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         guard.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         guard.phone.includes(searchQuery);
-      return matchesFilter && matchesSearch;
+
+      const matchesGender =
+        genderFilter === 'all' ||
+        (guard.gender || 'male').toLowerCase() === genderFilter.toLowerCase();
+
+      let matchesAge = true;
+      if (ageFilter !== 'all') {
+        const age = calculateAge(guard.date_of_birth);
+        if (ageFilter === 'under_25') matchesAge = age < 25;
+        else if (ageFilter === '25_35') matchesAge = age >= 25 && age <= 35;
+        else if (ageFilter === '35_45') matchesAge = age > 35 && age <= 45;
+        else if (ageFilter === 'above_45') matchesAge = age > 45;
+      }
+
+      let matchesHeight = true;
+      if (heightFilter !== 'all') {
+        const h = guard.height || 0;
+        if (heightFilter === 'under_165') matchesHeight = h < 165;
+        else if (heightFilter === '165_175') matchesHeight = h >= 165 && h <= 175;
+        else if (heightFilter === 'above_175') matchesHeight = h > 175;
+      }
+
+      let matchesEducation = true;
+      if (educationFilter !== 'all') {
+        const edu = (guard.education || '').toLowerCase();
+        if (educationFilter === 'below_10th') {
+          matchesEducation = edu.includes('below 10') || edu.includes('fail') || edu.includes('none');
+        } else if (educationFilter === '10th') {
+          matchesEducation = edu.includes('10th') || edu.includes('matric') || edu.includes('ssc');
+        } else if (educationFilter === '12th') {
+          matchesEducation = edu.includes('12th') || edu.includes('intermediate') || edu.includes('hsc');
+        } else if (educationFilter === 'graduate') {
+          matchesEducation = edu.includes('grad') || edu.includes('degree') || edu.includes('bachelor') || edu.includes('b.a') || edu.includes('b.c');
+        }
+      }
+
+      let matchesExperience = true;
+      if (experienceFilter !== 'all') {
+        const exp = calculateExperience(guard.joining_date);
+        if (experienceFilter === 'under_1') matchesExperience = exp < 1;
+        else if (experienceFilter === '1_3') matchesExperience = exp >= 1 && exp <= 3;
+        else if (experienceFilter === '3_5') matchesExperience = exp > 3 && exp <= 5;
+        else if (experienceFilter === 'above_5') matchesExperience = exp > 5;
+      }
+
+      return matchesFilter && matchesSearch && matchesGender && matchesAge && matchesHeight && matchesEducation && matchesExperience;
     });
-  }, [guards, activeFilter, searchQuery]);
+
+    result.sort((a, b) => {
+      if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
+      if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
+      
+      if (sortBy === 'age_asc') {
+        return calculateAge(a.date_of_birth) - calculateAge(b.date_of_birth);
+      }
+      if (sortBy === 'age_desc') {
+        return calculateAge(b.date_of_birth) - calculateAge(a.date_of_birth);
+      }
+
+      if (sortBy === 'height_asc') {
+        return (a.height || 0) - (b.height || 0);
+      }
+      if (sortBy === 'height_desc') {
+        return (b.height || 0) - (a.height || 0);
+      }
+
+      if (sortBy === 'experience_asc') {
+        return calculateExperience(a.joining_date) - calculateExperience(b.joining_date);
+      }
+      if (sortBy === 'experience_desc') {
+        return calculateExperience(b.joining_date) - calculateExperience(a.joining_date);
+      }
+
+      if (sortBy === 'joining_asc') {
+        return new Date(a.joining_date || '').getTime() - new Date(b.joining_date || '').getTime();
+      }
+      if (sortBy === 'joining_desc') {
+        return new Date(b.joining_date || '').getTime() - new Date(a.joining_date || '').getTime();
+      }
+
+      return 0;
+    });
+
+    return result;
+  }, [guards, activeFilter, searchQuery, genderFilter, ageFilter, heightFilter, educationFilter, experienceFilter, sortBy]);
 
   // Count per filter
   const counts = useMemo(() => {
@@ -521,70 +682,133 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
         {isFilterDropdownOpen && (
           <View style={s.filterDropdownPanel}>
             <View style={s.filterDropdownHeader}>
-              <Text style={s.filterDropdownTitle}>Filter by Status</Text>
-              {activeFilter !== 'all' && (
-                <TouchableOpacity onPress={() => { setActiveFilter('all'); setIsFilterDropdownOpen(false); }}>
-                  <Text style={s.clearFilterText}>Reset</Text>
+              <Text style={s.filterDropdownTitle}>Filters & Sort</Text>
+              {(activeFilter !== 'all' || genderFilter !== 'all' || ageFilter !== 'all' || heightFilter !== 'all' || educationFilter !== 'all' || experienceFilter !== 'all' || sortBy !== 'name_asc') && (
+                <TouchableOpacity onPress={resetFilters}>
+                  <Text style={s.clearFilterText}>Reset All</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            <View style={s.filterOptionsGrid}>
-              {filters.map((item) => {
-                const isSelected = activeFilter === item.key;
-                // Helper to get matching status dot color
-                const dotColor =
-                  item.key === 'all'
-                    ? Colors.primary
-                    : getStatusConfig(item.key as GuardStatus).dotColor;
+            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={true} nestedScrollEnabled={true}>
+              {/* Status Section */}
+              <Text style={s.filterSectionTitle}>STATUS</Text>
+              <View style={s.filterOptionsGrid}>
+                {filters.map((item) => {
+                  const isSelected = activeFilter === item.key;
+                  const dotColor =
+                    item.key === 'all'
+                      ? Colors.primary
+                      : getStatusConfig(item.key as GuardStatus).dotColor;
 
-                return (
-                  <TouchableOpacity
-                    key={item.key}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      setActiveFilter(item.key);
-                    }}
-                    style={[
-                      s.filterOptionCard,
-                      isSelected && s.filterOptionCardActive,
-                    ]}
-                  >
-                    <View style={s.filterOptionLeft}>
-                      <View style={[s.filterOptionDot, { backgroundColor: dotColor }]} />
-                      <Text
-                        style={[
-                          s.filterOptionLabel,
-                          isSelected && s.filterOptionLabelActive,
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
-                    </View>
-                    <View
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      activeOpacity={0.85}
+                      onPress={() => setActiveFilter(item.key)}
                       style={[
-                        s.filterOptionBadge,
-                        isSelected ? s.filterOptionBadgeActive : s.filterOptionBadgeInactive,
+                        s.filterOptionCard,
+                        isSelected && s.filterOptionCardActive,
                       ]}
                     >
-                      <Text
+                      <View style={s.filterOptionLeft}>
+                        <View style={[s.filterOptionDot, { backgroundColor: dotColor }]} />
+                        <Text
+                          style={[
+                            s.filterOptionLabel,
+                            isSelected && s.filterOptionLabelActive,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                      <View
                         style={[
-                          s.filterOptionCount,
-                          isSelected && s.filterOptionCountActive,
+                          s.filterOptionBadge,
+                          isSelected ? s.filterOptionBadgeActive : s.filterOptionBadgeInactive,
                         ]}
                       >
-                        {counts[item.key]}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                        <Text
+                          style={[
+                            s.filterOptionCount,
+                            isSelected && s.filterOptionCountActive,
+                          ]}
+                        >
+                          {counts[item.key]}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Sort Section */}
+              <Text style={s.filterSectionTitle}>SORT BY</Text>
+              <View style={s.chipsRow}>
+                {renderFilterChip('Name (A-Z)', sortBy === 'name_asc', () => setSortBy('name_asc'))}
+                {renderFilterChip('Name (Z-A)', sortBy === 'name_desc', () => setSortBy('name_desc'))}
+                {renderFilterChip('Age (Young)', sortBy === 'age_asc', () => setSortBy('age_asc'))}
+                {renderFilterChip('Age (Old)', sortBy === 'age_desc', () => setSortBy('age_desc'))}
+                {renderFilterChip('Height (Short)', sortBy === 'height_asc', () => setSortBy('height_asc'))}
+                {renderFilterChip('Height (Tall)', sortBy === 'height_desc', () => setSortBy('height_desc'))}
+                {renderFilterChip('Experience (Least)', sortBy === 'experience_asc', () => setSortBy('experience_asc'))}
+                {renderFilterChip('Experience (Most)', sortBy === 'experience_desc', () => setSortBy('experience_desc'))}
+                {renderFilterChip('Joining (Newest)', sortBy === 'joining_desc', () => setSortBy('joining_desc'))}
+                {renderFilterChip('Joining (Oldest)', sortBy === 'joining_asc', () => setSortBy('joining_asc'))}
+              </View>
+
+              {/* Gender Section */}
+              <Text style={s.filterSectionTitle}>GENDER</Text>
+              <View style={s.chipsRow}>
+                {renderFilterChip('All Genders', genderFilter === 'all', () => setGenderFilter('all'))}
+                {renderFilterChip('Male Only', genderFilter === 'male', () => setGenderFilter('male'))}
+                {renderFilterChip('Female Only', genderFilter === 'female', () => setGenderFilter('female'))}
+              </View>
+
+              {/* Age Section */}
+              <Text style={s.filterSectionTitle}>AGE RANGE</Text>
+              <View style={s.chipsRow}>
+                {renderFilterChip('All Ages', ageFilter === 'all', () => setAgeFilter('all'))}
+                {renderFilterChip('Under 25', ageFilter === 'under_25', () => setAgeFilter('under_25'))}
+                {renderFilterChip('25 - 35', ageFilter === '25_35', () => setAgeFilter('25_35'))}
+                {renderFilterChip('35 - 45', ageFilter === '35_45', () => setAgeFilter('35_45'))}
+                {renderFilterChip('Above 45', ageFilter === 'above_45', () => setAgeFilter('above_45'))}
+              </View>
+
+              {/* Height Section */}
+              <Text style={s.filterSectionTitle}>HEIGHT RANGE</Text>
+              <View style={s.chipsRow}>
+                {renderFilterChip('All Heights', heightFilter === 'all', () => setHeightFilter('all'))}
+                {renderFilterChip('Under 165 cm', heightFilter === 'under_165', () => setHeightFilter('under_165'))}
+                {renderFilterChip('165 - 175 cm', heightFilter === '165_175', () => setHeightFilter('165_175'))}
+                {renderFilterChip('Above 175 cm', heightFilter === 'above_175', () => setHeightFilter('above_175'))}
+              </View>
+
+              {/* Education Section */}
+              <Text style={s.filterSectionTitle}>EDUCATION</Text>
+              <View style={s.chipsRow}>
+                {renderFilterChip('All Education', educationFilter === 'all', () => setEducationFilter('all'))}
+                {renderFilterChip('Below 10th', educationFilter === 'below_10th', () => setEducationFilter('below_10th'))}
+                {renderFilterChip('10th Pass', educationFilter === '10th', () => setEducationFilter('10th'))}
+                {renderFilterChip('12th Pass', educationFilter === '12th', () => setEducationFilter('12th'))}
+                {renderFilterChip('Graduate', educationFilter === 'graduate', () => setEducationFilter('graduate'))}
+              </View>
+
+              {/* Experience Section */}
+              <Text style={s.filterSectionTitle}>EXPERIENCE RANGE</Text>
+              <View style={s.chipsRow}>
+                {renderFilterChip('All Experience', experienceFilter === 'all', () => setExperienceFilter('all'))}
+                {renderFilterChip('Under 1 Year', experienceFilter === 'under_1', () => setExperienceFilter('under_1'))}
+                {renderFilterChip('1 - 3 Years', experienceFilter === '1_3', () => setExperienceFilter('1_3'))}
+                {renderFilterChip('3 - 5 Years', experienceFilter === '3_5', () => setExperienceFilter('3_5'))}
+                {renderFilterChip('Above 5 Years', experienceFilter === 'above_5', () => setExperienceFilter('above_5'))}
+              </View>
+            </ScrollView>
 
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => setIsFilterDropdownOpen(false)}
-              style={s.applyFilterBtn}
+              style={[s.applyFilterBtn, { marginTop: 12 }]}
             >
               <Text style={s.applyFilterBtnText}>Apply Filters</Text>
             </TouchableOpacity>
@@ -620,7 +844,7 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
       </Animated.View>
 
       {/* ═══ Bottom Nav Bar (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'guards';
           return (
@@ -1087,5 +1311,40 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     paddingHorizontal: 32,
+  },
+  filterSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
+    marginTop: 14,
+    marginBottom: 6,
+    letterSpacing: 1,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceContainerLow || '#F0F2F5',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant || '#E0E2E5',
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 });

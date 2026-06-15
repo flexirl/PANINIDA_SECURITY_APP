@@ -15,6 +15,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +34,7 @@ interface PayrollEntry {
   id: string;
   guardName: string;
   guardId: string;
+  phone?: string;
   site: string;
   baseSalary: number;
   overtime: number;
@@ -43,6 +45,7 @@ interface PayrollEntry {
   totalDays: number;
   shift: 'day' | 'night';
   adminOverride?: number; // Admin-set final salary
+  categoryId?: string; // For category filtering
 }
 
 interface MonthData {
@@ -80,7 +83,8 @@ function mapToEntry(r: payrollService.PayrollRecord): PayrollEntry {
   return {
     id: r.id,
     guardName: (r as any).guards?.users?.name || (r as any).guards?.name || 'Unknown',
-    guardId: r.guard_id,
+    guardId: (r as any).guards?.employee_id || r.guard_id,
+    phone: (r as any).guards?.phone || (r as any).guards?.users?.phone,
     site: 'Assigned Site',
     baseSalary: r.base_salary || 0,
     overtime: r.overtime_amount || 0,
@@ -90,6 +94,7 @@ function mapToEntry(r: payrollService.PayrollRecord): PayrollEntry {
     daysPresent: r.days_present || 0,
     totalDays: r.total_working_days || 30,
     shift: 'day',
+    categoryId: (r as any).guards?.category_id,
   };
 }
 
@@ -255,50 +260,29 @@ function SalarySummaryCard({ entries }: { entries: PayrollEntry[] }) {
 
   return (
     <View style={s.summaryCard}>
-      <View style={s.summaryGradientBar} />
+      <View style={{ position: 'absolute', top: 0, right: 0, opacity: 0.1, transform: [{ translateX: 40 }, { translateY: -40 }] }}>
+        <MaterialIcons name="account-balance-wallet" size={160} color="#ffffff" />
+      </View>
       <View style={s.summaryContent}>
         <View style={s.summaryMainRow}>
           <View>
             <Text style={s.summaryLabel}>Total Net Salary</Text>
             <Text style={s.summaryAmount}>{formatCurrency(totalNet)}</Text>
           </View>
-          <View style={s.summaryIconBg}>
-            <MaterialIcons name="account-balance-wallet" size={24} color={Colors.primary} />
-          </View>
         </View>
 
         <View style={s.summaryBreakdown}>
-          <View>
-            <View style={s.breakdownItem}>
-              <View style={[s.breakdownDot, { backgroundColor: Colors.successGreen }]} />
-              <Text style={s.breakdownLabel}>Base</Text>
-            </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.breakdownLabel}>Base</Text>
             <Text style={s.breakdownValue}>{formatCurrency(totalBase)}</Text>
           </View>
-          <View>
-            <View style={s.breakdownItem}>
-              <View style={[s.breakdownDot, { backgroundColor: Colors.infoBlue }]} />
-              <Text style={s.breakdownLabel}>Overtime</Text>
-            </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.breakdownLabel}>Overtime</Text>
             <Text style={s.breakdownValue}>{formatCurrency(totalOT)}</Text>
           </View>
-          <View>
-            <View style={s.breakdownItem}>
-              <View style={[s.breakdownDot, { backgroundColor: Colors.dangerRed }]} />
-              <Text style={s.breakdownLabel}>Deductions</Text>
-            </View>
-            <Text style={s.breakdownValue}>{formatCurrency(totalDed)}</Text>
-          </View>
-        </View>
-
-        <View style={s.summaryFooter}>
-          <View style={s.summaryStatChip}>
-            <MaterialIcons name="receipt" size={14} color={Colors.onSurfaceVariant} />
-            <Text style={s.summaryStatText}>{entries.length} entries</Text>
-          </View>
-          <View style={s.summaryStatChip}>
-            <MaterialIcons name="calendar-today" size={14} color={Colors.onSurfaceVariant} />
-            <Text style={s.summaryStatText}>Current Month</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.breakdownLabel}>Deductions</Text>
+            <Text style={[s.breakdownValue, { color: Colors.secondaryContainer }]}>{formatCurrency(totalDed)}</Text>
           </View>
         </View>
       </View>
@@ -336,6 +320,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
   const [overrideModal, setOverrideModal] = useState(false);
   const [overrideTarget, setOverrideTarget] = useState<PayrollEntry | null>(null);
   const [overrideAmount, setOverrideAmount] = useState('');
+  const [generating, setGenerating] = useState(false);
 
   // ── Data Fetching ──
   const fetchPayroll = useCallback(async () => {
@@ -381,7 +366,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
       
       // Apply category filter
       if (selectedCategory !== 'all' && categoryFilterIds.length > 0) {
-        filtered = filtered.filter(e => categoryFilterIds.includes(e.guardId));
+        filtered = filtered.filter(e => e.categoryId && categoryFilterIds.includes(e.categoryId));
       }
       
       setEntries(filtered);
@@ -398,7 +383,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
 
     // Category filter
     if (selectedCategory !== 'all' && categoryFilterIds.length > 0) {
-      result = result.filter(e => categoryFilterIds.includes(e.guardId));
+      result = result.filter(e => e.categoryId && categoryFilterIds.includes(e.categoryId));
     }
 
     // Search filter
@@ -432,6 +417,30 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
         break;
     }
   }, [navigation]);
+
+  // ── Action Handlers ──
+  const handleGeneratePayroll = useCallback(async () => {
+    try {
+      setGenerating(true);
+      await payrollService.generatePayroll(selectedMonth);
+      Alert.alert('Success', 'Payroll generated successfully for ' + selectedMonth);
+      fetchPayroll();
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to generate payroll.');
+    } finally {
+      setGenerating(false);
+    }
+  }, [selectedMonth, fetchPayroll]);
+
+  const handleApprovePayroll = useCallback(async (entry: PayrollEntry) => {
+    try {
+      await payrollService.approvePayrollRecord(entry.id);
+      Alert.alert('Success', `Payroll approved for ${entry.guardName}`);
+      fetchPayroll();
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to approve payroll.');
+    }
+  }, [fetchPayroll]);
 
   // ── Override Handlers ──
   const handleOpenOverride = useCallback((entry: PayrollEntry) => {
@@ -496,6 +505,12 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
               <Text style={s.guardName} numberOfLines={1}>{item.guardName}</Text>
               <View style={s.guardMeta}>
                 <Text style={s.guardIdText}>{item.guardId}</Text>
+                {item.phone && (
+                  <>
+                    <Text style={s.metaDot}>•</Text>
+                    <Text style={s.guardSiteText} numberOfLines={1}>{item.phone}</Text>
+                  </>
+                )}
                 <Text style={s.metaDot}>•</Text>
                 <Text style={s.guardSiteText} numberOfLines={1}>{item.site}</Text>
               </View>
@@ -569,14 +584,22 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
           </View>
         </View>
 
-        {/* Override Button */}
-        <TouchableOpacity style={s.overrideBtn} activeOpacity={0.7} onPress={() => handleOpenOverride(item)}>
-          <MaterialIcons name="edit" size={14} color={Colors.primary} />
-          <Text style={s.overrideBtnText}>Set Final Salary</Text>
-        </TouchableOpacity>
+        {/* Override & Approve Buttons */}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity style={[s.overrideBtn, { flex: 1 }]} activeOpacity={0.7} onPress={() => handleOpenOverride(item)}>
+            <MaterialIcons name="edit" size={14} color={Colors.primary} />
+            <Text style={s.overrideBtnText}>Set Final Salary</Text>
+          </TouchableOpacity>
+          {(item.status === 'draft' || item.status === 'generated') && (
+            <TouchableOpacity style={[s.overrideBtn, { flex: 1, backgroundColor: '#e7f5e9', borderColor: '#c8e6c9', justifyContent: 'center' }]} activeOpacity={0.7} onPress={() => handleApprovePayroll(item)}>
+              <MaterialIcons name="check-circle" size={14} color="#2E7D32" />
+              <Text style={[s.overrideBtnText, { color: '#2E7D32' }]}>Approve</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </TouchableOpacity>
     );
-  }, [s, handleOpenOverride]);
+  }, [s, handleOpenOverride, handleApprovePayroll]);
 
   // ── Loading State ──
   if (loading && entries.length === 0) {
@@ -602,7 +625,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
             </TouchableOpacity>
             <View>
               <Text style={s.topBarTitle}>Payroll</Text>
-              <Text style={s.topBarSubtitle}>{selectedCategory === 'all' ? 'All Workforce' : getLabel('plural')}</Text>
+              <Text style={s.topBarSubtitle}>GUARDS MANAGEMENT</Text>
             </View>
           </View>
           <View style={s.topBarRight}>
@@ -610,8 +633,12 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
               <MaterialIcons name="file-download" size={22} color={Colors.onSurfaceVariant} />
             </TouchableOpacity>
             <TouchableOpacity style={s.topBarIconBtn}>
-              <MaterialIcons name="tune" size={22} color={Colors.onSurfaceVariant} />
+              <MaterialIcons name="filter-list" size={22} color={Colors.onSurfaceVariant} />
             </TouchableOpacity>
+            <View style={{ marginLeft: 8, width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: Colors.primary, overflow: 'hidden', position: 'relative' }}>
+              <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAitTMNtrNFaz7QUdtwrSearo3SE6qydxj_n541O7cVC3cmoapvuUFniJ7nUxSB4okBZWQC848tYYTEQ2eGN2_pgwvsKUqq2ZlhIpuHtQwpkgrG2X-Z4UtXGJ2IJlHlS0Q06eVAMUlGS1NF65kVXCx9UGdDGW0wwAb8cI5hf-l32T7jKaqcabdovzBsxp8yolc9pzF3_oH7rB_2xMkZbJrwMot_BPEebhOnYXsxS1q0QSuMbVkOFsnU-uUqu4emNITsbQlub21gysk' }} style={{ width: '100%', height: '100%' }} />
+              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.successGreen, borderWidth: 2, borderColor: '#fff' }} />
+            </View>
           </View>
         </View>
       </View>
@@ -704,6 +731,23 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
             {/* Summary Card */}
             <SalarySummaryCard entries={filteredEntries} />
 
+            {/* Bulk Generate Action */}
+            <TouchableOpacity 
+              style={[s.overrideBtn, { marginBottom: 16, alignSelf: 'stretch', backgroundColor: Colors.secondary, padding: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }]} 
+              activeOpacity={0.8}
+              onPress={handleGeneratePayroll}
+              disabled={generating}
+            >
+              {generating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialIcons name="payments" size={24} color="#fff" />
+              )}
+              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>
+                {generating ? 'Generating...' : `Generate Payroll for ${MONTHS.find(m => m.key === selectedMonth)?.label}`}
+              </Text>
+            </TouchableOpacity>
+
             {/* Result Count */}
             <View style={s.listHeader}>
               <Text style={s.resultCount}>
@@ -728,7 +772,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
       />
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
-      <View style={s.bottomNav}>
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
         {navItems.map((item) => {
           const isActive = item.key === 'more';
           return (
@@ -867,15 +911,8 @@ const styles = StyleSheet.create({
 
   // ── Month Selector ──
   monthSelectorContainer: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.surfaceContainerLowest,
     paddingBottom: 12,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     zIndex: 40,
   },
   monthScroll: {
@@ -885,12 +922,12 @@ const styles = StyleSheet.create({
   monthPill: {
     width: 64,
     paddingVertical: 8,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   monthPillActive: {
-    backgroundColor: Colors.onPrimary,
+    backgroundColor: Colors.primary,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -898,17 +935,19 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   monthPillInactive: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
   },
   monthPillText: {
     fontSize: 14,
     fontWeight: '700',
   },
   monthPillTextActive: {
-    color: Colors.primary,
+    color: Colors.onPrimary,
   },
   monthPillTextInactive: {
-    color: 'rgba(255,255,255,0.85)',
+    color: Colors.onSurfaceVariant,
   },
   monthPillYear: {
     fontSize: 10,
@@ -916,10 +955,10 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   monthPillYearActive: {
-    color: Colors.primaryContainer,
+    color: Colors.primaryFixedDim,
   },
   monthPillYearInactive: {
-    color: 'rgba(255,255,255,0.5)',
+    color: Colors.outline,
   },
 
   // ── Search ──
@@ -1008,61 +1047,54 @@ const styles = StyleSheet.create({
 
   // ── Summary Card ──
   summaryCard: {
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: Colors.primaryContainer,
     borderRadius: BorderRadius.xl,
-    marginBottom: 16,
+    marginBottom: 24,
     borderWidth: 1,
-    borderColor: Colors.outlineVariant,
+    borderColor: Colors.primaryContainer,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   summaryGradientBar: {
-    height: 4,
-    backgroundColor: Colors.primary,
+    height: 0,
   },
   summaryContent: {
-    padding: 16,
+    padding: 24,
   },
   summaryMainRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   summaryLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: Colors.outline,
-    letterSpacing: 0.3,
+    color: Colors.onPrimaryContainer,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   summaryAmount: {
-    fontSize: 28,
+    fontSize: 48,
     fontWeight: '800',
-    color: Colors.primary,
-    marginTop: 2,
-    letterSpacing: -0.5,
+    color: '#ffffff',
+    marginTop: 4,
+    letterSpacing: -1,
   },
   summaryIconBg: {
-    width: 52,
-    height: 52,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: 'rgba(0, 39, 82, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: 'none',
   },
   summaryBreakdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 14,
+    paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(195,198,208,0.3)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(195,198,208,0.3)',
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    gap: 16,
   },
   breakdownItem: {
     flexDirection: 'row',
@@ -1070,37 +1102,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   breakdownDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    display: 'none',
   },
   breakdownLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.outline,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  breakdownValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.onSurface,
-    marginTop: 1,
-  },
-  summaryFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 12,
-  },
-  summaryStatChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  summaryStatText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.onSurfaceVariant,
+    color: Colors.onPrimaryContainer,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  breakdownValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginTop: 4,
+  },
+  summaryFooter: {
+    display: 'none',
+  },
+  summaryStatChip: {
+    display: 'none',
+  },
+  summaryStatText: {
+    display: 'none',
   },
 
   // ── List ──

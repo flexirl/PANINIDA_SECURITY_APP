@@ -11,8 +11,10 @@ export interface AttendanceRecord {
   check_out_selfie?: string;
   check_in_latitude?: number;
   check_in_longitude?: number;
+  check_out_latitude?: number;
+  check_out_longitude?: number;
   hours_worked?: number;
-  status: 'present' | 'late' | 'half_day' | 'absent';
+  status: 'present' | 'late' | 'half_day' | 'absent' | 'present_late';
   is_manual_entry: boolean;
   attendance_date: string;
   guards?: {

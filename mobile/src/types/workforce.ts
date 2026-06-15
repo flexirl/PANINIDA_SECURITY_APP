@@ -37,7 +37,7 @@ export type ComplaintSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export type ReplacementStatus = 'requested' | 'assigned' | 'completed' | 'cancelled';
 
-export type AttendanceStatus = 'present' | 'late' | 'half_day' | 'absent' | 'corrected';
+export type AttendanceStatus = 'present' | 'late' | 'half_day' | 'absent' | 'corrected' | 'present_late';
 
 export type ClientRole = 'society_president' | 'society_secretary' | 'facility_manager';
 
@@ -85,6 +85,12 @@ export interface WorkforcePersonnel {
   aadhaar_number?: string;
   pan_number?: string;
   address?: string;
+  gender?: string;
+  date_of_birth?: string;
+  police_verification?: boolean;
+  height?: number;
+  weight?: number;
+  education?: string;
   created_at: string;
   updated_at: string;
   // Joined fields (populated by service queries)
@@ -126,6 +132,15 @@ export interface Site {
   site_manager_id?: string;
   assigned_supervisor_id?: string;
   workforce_strength?: number | null;
+  // Shift timings
+  day_shift_start?: string;
+  day_shift_end?: string;
+  night_shift_start?: string;
+  night_shift_end?: string;
+  // Attendance thresholds (Migration 030)
+  late_threshold_minutes?: number;   // default 120 (2 hours)
+  min_hours_present?: number;        // default 7
+  min_hours_half_day?: number;       // default 4
 }
 
 // ─── Dashboard & Metrics (Task 4.3) ─────────────────────────────────────────
@@ -226,11 +241,14 @@ export interface WorkforceAttendance {
   check_out_selfie?: string | null;
   check_in_latitude?: number | null;
   check_in_longitude?: number | null;
+  check_out_latitude?: number | null;
+  check_out_longitude?: number | null;
   hours_worked?: number | null;
   status: AttendanceStatus;
   is_manual_entry: boolean;
   approved_by?: string | null;
   approved_at?: string | null;
+  remarks?: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -280,74 +298,6 @@ export interface AppNotification {
   is_read: boolean;
   created_at: string;
 }
-
-export interface AnalyticsFilters {
-  site_ids?: string[];
-  category_ids?: string[];
-  from_date: string;
-  to_date: string;
-  region?: string;
-}
-
-// Analytics result types
-
-export interface CategoryDistribution {
-  category_id: string;
-  category_name: string;
-  prefix_code: string;
-  count: number;
-}
-
-export interface AttendanceTrendPoint {
-  date: string;
-  attendance_percentage: number;
-  total_expected: number;
-  total_present: number;
-}
-
-export interface SiteDeploymentPoint {
-  site_id: string;
-  site_name: string;
-  active_assignments: number;
-  workforce_strength: number | null;
-}
-
-export interface ComplaintTrendPoint {
-  date: string;
-  total: number;
-  resolved: number;
-  escalated: number;
-}
-
-export interface TurnoverRate {
-  rate: number | 'N/A';
-  terminated_count: number;
-  average_headcount: number;
-}
-
-export interface VacancyRatePoint {
-  site_id: string;
-  site_name: string;
-  vacancy_rate: number;
-  vacancy_days: number;
-  total_capacity_days: number;
-}
-
-export interface AttendanceSummary {
-  overall_percentage: number;
-  present_count: number;
-  absent_count: number;
-  late_count: number;
-  half_day_count: number;
-  total_expected: number;
-  personnel_breakdown: Array<{
-    personnel_id: string;
-    name: string;
-    employee_id: string;
-    status: AttendanceStatus | 'not_required';
-  }>;
-}
-
 export interface DocumentChecklistItem {
   document_type: string;
   display_name: string;

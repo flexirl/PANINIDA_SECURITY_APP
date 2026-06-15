@@ -204,7 +204,7 @@ export default function SupervisorDashboardScreen({ navigation }: any) {
               { id: 'guards', label: 'Guards' },
               { id: 'gunmen', label: 'Gunman Personnel' },
               { id: 'bouncers', label: 'Bouncers' },
-              { id: 'helpers', label: 'Helpers / Housekeeping' }
+              { id: 'helpers', label: 'Helpers' }
             ].map((cat) => {
               const active = selectedCategory === cat.id;
               return (

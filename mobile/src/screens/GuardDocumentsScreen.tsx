@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import * as guardService from '../api/guardService';
 import { useFileUpload } from '../hooks/useFileUpload';
+import { resolveImageUrl } from '../utils/imageUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -209,28 +210,60 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
     }
   };
 
-  const handleViewDocument = (doc: DocItem) => {
+  const handleViewDocument = async (doc: DocItem) => {
     if (doc.status === 'missing') {
       Alert.alert('Not Found', 'Please upload this document first.');
       return;
     }
 
-    const url = doc.url || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBTiCH7H_sH3ZZJzckhG_6Uu4DxeAIinxdPFXHrqm9a0sTxDBsqKtnK8qyofOAcM5oK2-cSGXLwSq0MDcVw-OOZxsg3dnvw39bcUsjutgdw5sn4QONh-2M7J-V7D6a0Ykw5smzyKVhIAlTa6t10oGzftkCxrfy-I949HGtiWll2R_4KARxqJjHaZUTYsDg4NhjRTlPEKH4063o_riyNSlhra1eu4M9233NVdGka8qQX4qbzAVVW_rGbqY3Pd56_jekgsyZsyoPUjew';
-
-    Linking.openURL(url).catch(() => {
+    if (!doc.url) {
       Alert.alert(
         doc.name,
         `Status: ${doc.status.toUpperCase()}\nDocument is saved securely on the server.`,
         [{ text: 'Close' }]
       );
-    });
+      return;
+    }
+
+    try {
+      // Resolve the URL (handles expired signed URLs and storage:// paths)
+      const resolvedUrl = await resolveImageUrl(doc.url);
+      if (resolvedUrl) {
+        Linking.openURL(resolvedUrl).catch(() => {
+          Alert.alert(
+            doc.name,
+            `Status: ${doc.status.toUpperCase()}\nDocument is saved securely on the server.`,
+            [{ text: 'Close' }]
+          );
+        });
+      } else {
+        Alert.alert('Error', 'Could not load the document URL. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error resolving document URL:', err);
+      Alert.alert('Error', 'Could not load the document. Please try again.');
+    }
   };
 
-  const handleDownload = (doc: DocItem) => {
-    const url = doc.url || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBTiCH7H_sH3ZZJzckhG_6Uu4DxeAIinxdPFXHrqm9a0sTxDBsqKtnK8qyofOAcM5oK2-cSGXLwSq0MDcVw-OOZxsg3dnvw39bcUsjutgdw5sn4QONh-2M7J-V7D6a0Ykw5smzyKVhIAlTa6t10oGzftkCxrfy-I949HGtiWll2R_4KARxqJjHaZUTYsDg4NhjRTlPEKH4063o_riyNSlhra1eu4M9233NVdGka8qQX4qbzAVVW_rGbqY3Pd56_jekgsyZsyoPUjew';
-    Linking.openURL(url).catch(() => {
+  const handleDownload = async (doc: DocItem) => {
+    if (!doc.url) {
+      Alert.alert('Error', 'No document URL available.');
+      return;
+    }
+
+    try {
+      const resolvedUrl = await resolveImageUrl(doc.url);
+      if (resolvedUrl) {
+        Linking.openURL(resolvedUrl).catch(() => {
+          Alert.alert('Error', 'Unable to download file.');
+        });
+      } else {
+        Alert.alert('Error', 'Could not resolve the download URL.');
+      }
+    } catch (err) {
+      console.error('Error resolving download URL:', err);
       Alert.alert('Error', 'Unable to download file.');
-    });
+    }
   };
 
   const handleContactSupport = () => {
@@ -282,10 +315,10 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
   };
 
   const navItems = [
-    { key: 'home', icon: 'home' as const, label: 'Home' },
-    { key: 'attendance', icon: 'assignment-turned-in' as const, label: 'Attendance' },
+    { key: 'home', icon: 'dashboard' as const, label: 'Home' },
+    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
     { key: 'salary', icon: 'payments' as const, label: 'Salary' },
-    { key: 'profile', icon: 'account-circle' as const, label: 'Profile' },
+    { key: 'profile', icon: 'person' as const, label: 'Profile' },
   ];
 
   const handleNavPress = (key: string) => {
@@ -324,11 +357,8 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
             >
               <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <View style={s.brandGroup}>
-              <MaterialIcons name="security" size={26} color={Colors.primary} style={s.brandIcon} />
-              <Text style={s.brandText}>SENTINEL PRIME</Text>
+              <Text style={s.topBarTitle}>Document Vault</Text>
             </View>
-          </View>
           <TouchableOpacity
             activeOpacity={0.7}
             style={s.notificationBtn}
@@ -558,6 +588,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.primary,
     letterSpacing: -0.5,
+  },
+  topBarTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+    flex: 1,
   },
   notificationBtn: {
     padding: 8,

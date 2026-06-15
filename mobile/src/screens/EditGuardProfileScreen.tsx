@@ -26,6 +26,9 @@ import { useAuth } from '../hooks/useAuth';
 import * as guardService from '../api/guardService';
 import { useFileUpload } from '../hooks/useFileUpload';
 
+const LOGO_URL =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCQ1nR-azIGzwp04pulq6olrkEqAb1txijCpWpJdEUL2C84FKePxt77NS2Hn8UW9CsJPJkugrwhCY6hePFIXW5_Q-QVNBBn6MSXo1B9u6ZMjgAnSg1-NwcAR3o20ChzVMO1HVOKhcVesFsHMQxMqurEaMg2eAFs-TIcUJxxzrPgLm7OrFQ8uN_8-yGhkIuWrlny29UxzziSSj3K0H6JbXJHHXny9-KXM9ND_lQa4gSHSofs__S_66Zm6OCpDjMEmLi4lUm05ExxfXc';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BLOOD_GROUPS = ['A+', 'B+', 'O+', 'AB+', 'A-', 'B-', 'O-', 'AB-'];
@@ -406,32 +409,22 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
         <View style={s.topBarInner}>
           <View style={s.topBarLeft}>
-            <View style={s.topBarLogoBg}>
-              <MaterialIcons name="security" size={22} color="#ffffff" />
-            </View>
-            <Text style={s.brandText}>PAN INDIA SECURITY</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.goBack()}
+              style={[s.topBarIconBtn, { marginLeft: -8 }]}
+            >
+              <MaterialIcons name="arrow-back" size={28} color={Colors.onSurface} />
+            </TouchableOpacity>
           </View>
           <View style={s.topBarRight}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('NotificationCenter')}
-              style={s.topBarIconBtn}
-            >
-              <MaterialIcons name="notifications-none" size={24} color={Colors.onSurfaceVariant} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('GuardProfile')}
-            >
-              <View style={s.headerAvatar}>
-                <Image
-                  source={{ uri: avatarUri || user?.avatar_url || DEFAULT_AVATAR }}
-                  style={s.headerAvatarImg as any}
-                />
-                {/* Status pulse dot */}
-                <View style={s.headerStatusDot} />
-              </View>
-            </TouchableOpacity>
+            <View style={s.topBarLogoWrapper}>
+              <Image 
+                source={{ uri: LOGO_URL }} 
+                style={s.topBarLogoImg} 
+                resizeMode="contain" 
+              />
+            </View>
           </View>
         </View>
       </View>
@@ -726,13 +719,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  topBarLogoBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
+  topBarLogoWrapper: {
+    width: 40,
+    height: 40,
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topBarLogoImg: {
+    width: '100%',
+    height: '100%',
   },
   brandText: {
     fontSize: 14,

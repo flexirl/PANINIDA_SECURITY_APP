@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '../api/supabase';
 import * as authService from '../api/authService';
+import { clearImageUrlCache } from '../utils/imageUtils';
 
 export interface AuthContextType {
   user: authService.UserProfile | null;
@@ -99,6 +100,8 @@ export function useAuth() {
   const signOutUser = async () => {
     setLoading(true);
     try {
+      // Clear cached image URLs to prevent stale data on re-login
+      clearImageUrlCache();
       await authService.signOut();
       setUser(null);
     } catch (err) {

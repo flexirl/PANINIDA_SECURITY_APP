@@ -25,7 +25,7 @@ const formatMonthString = (monthStr: string) => {
   try {
     const [year, month] = monthStr.split('-');
     const date = new Date(parseInt(year), parseInt(month) - 1, 1);
-    return date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
   } catch (err) {
     return monthStr;
   }
@@ -64,7 +64,11 @@ export default function GuardSalarySlipDetailScreen({
 
   const handleDownload = () => {
     const period = slipData ? formatMonthString(slipData.month) : 'Payslip';
-    Alert.alert('Success', `Downloading PDF Payslip for ${period}...`);
+    Alert.alert('Success / सफलता', `Downloading PDF Payslip for ${period}... / ${period} के लिए पीडीएफ वेतन पर्ची डाउनलोड की जा रही है...`);
+  };
+
+  const handleShare = () => {
+    Alert.alert('Share / साझा करें', 'Opening share dialog... / साझा संवाद खुल रहा है...');
   };
 
   if (loading) {
@@ -91,199 +95,227 @@ export default function GuardSalarySlipDetailScreen({
 
   // Status visual configurations
   const isPaid = slipData.status === 'paid';
-  const statusLabel = isPaid ? 'Paid via Bank Transfer' : 'Generated';
-  const statusColor = isPaid ? Colors.successGreen : Colors.warningAmber;
-  const statusBg = isPaid ? 'rgba(39, 174, 96, 0.1)' : 'rgba(243, 156, 18, 0.1)';
+  const isApproved = slipData.status === 'approved';
+  
+  let statusLabel = 'GENERATED';
+  let statusColor = Colors.warningAmber;
+  let statusBg = 'rgba(243, 156, 18, 0.1)';
+  
+  if (isPaid) {
+    statusLabel = 'PAID';
+    statusColor = Colors.successGreen;
+    statusBg = '#e0f2fe'; // From design
+  } else if (isApproved) {
+    statusLabel = 'APPROVED';
+    statusColor = Colors.primary;
+    statusBg = 'rgba(0, 39, 82, 0.1)';
+  }
 
-  // Calculate absents
-  const absentDays = Math.max(0, slipData.total_working_days - slipData.days_present);
-
-  // Calculate overtime hours from overtime amount (standard hourly rate in mockup is approx ₹204/hr, or we show based on seeded data)
-  const estimatedOtHours = Math.round(slipData.overtime_amount / 204);
-
-  const LOGO_URL = 'https://lh3.googleusercontent.com/aida-public/AB6AXuBi_f7HzWWUK3r9qVfk21NI-iLmMLqpi4ZX_0MZ3TUDwwDst5XCSXIrOmFPb8MMYlHKgupKpG2mQzLFt6RG4_qjUJtwkCwrnpy6JfTfaaULHZtWY7iq1YKMShFsaUG3rOUISRTpIRYgYpog-vmxaqPPa9RG4OolnfKt2pcTkoeetElgorqSvGVjRhBoPtGzpYuvCWwVtYVHSxXeBuJEss33fDNr5oWXeI9hT3Nyy2WJe45iQO0Tp0VRnzYYOXxhJJEg8HLbseKh2iA';
   const DEFAULT_AVATAR = 'https://lh3.googleusercontent.com/aida-public/AB6AXuBTiCH7H_sH3ZZJzckhG_6Uu4DxeAIinxdPFXHrqm9a0sTxDBsqKtnK8qyofOAcM5oK2-cSGXLwSq0MDcVw-OOZxsg3dnvw39bcUsjutgdw5sn4QONh-2M7J-V7D6a0Ykw5smzyKVhIAlTa6t10oGzftkCxrfy-I949HGtiWll2R_4KARxqJjHaZUTYsDg4NhjRTlPEKH4063o_riyNSlhra1eu4M9233NVdGka8qQX4qbzAVVW_rGbqY3Pd56_jekgsyZsyoPUjew';
+  
+  const guardInfo = (slipData as any).guards || {};
+  const guardName = guardInfo?.users?.name || guardInfo?.name || 'Unknown Guard';
+  const guardId = guardInfo?.employee_id || slipData.guard_id.substring(0, 8).toUpperCase();
+  const avatarUrl = user?.avatar_url || DEFAULT_AVATAR;
+
+  // Calculate earnings
+  const baseSalary = slipData.pro_rated_salary || 0;
+  const overtimeAmt = slipData.overtime_amount || 0;
+  // Let's add allowances/bonus if available, otherwise 0
+  const allowances = 0; 
+  const bonus = 0;
+  const grossEarnings = baseSalary + overtimeAmt + allowances + bonus;
+
+  // Calculate deductions
+  const pf = 0; // If you have PF, put it here
+  const esi = 0; // If you have ESI, put it here
+  const latePenalty = slipData.penalty_amount || 0;
+  const uniformDed = slipData.uniform_deduction || 0;
+  const advanceDed = slipData.advance_deduction || 0;
+  const otherDed = slipData.other_deduction || 0;
+  
+  const totalDeductions = latePenalty + uniformDed + advanceDed + otherDed + pf + esi;
+  const netPayable = Math.max(0, grossEarnings - totalDeductions);
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F4F4F9" />
 
-      {/* ═══ TopAppBar ═══ */}
-      <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
-        <View style={s.topBarInner}>
-          <View style={s.topBarLeft}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.goBack()}
-              style={s.backBtn}
-            >
-              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-            </TouchableOpacity>
-            <Text style={s.topBarTitle} numberOfLines={1}>
-              {/* Title */}
-              Payslip Detail
-            </Text>
-          </View>
-          <View style={s.topBarRight}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={s.topBarIconBtn}
-              onPress={() => navigation.navigate('NotificationCenter')}
-            >
-              <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('GuardProfile')}
-            >
-              <View style={s.avatarSmall}>
-                <Image
-                  source={{ uri: user?.avatar_url || DEFAULT_AVATAR }}
-                  style={s.avatarSmallImage as any}
-                />
-              </View>
-            </TouchableOpacity>
-          </View>
+      {/* ═══ Header ═══ */}
+      <View style={[s.header, { paddingTop: insets.top }]}>
+        <View style={s.headerInner}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={s.iconBtn}>
+            <MaterialIcons name="menu" size={26} color="#111827" />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Sentinel Prime</Text>
+          <TouchableOpacity activeOpacity={0.7} style={s.iconBtn}>
+            <View style={s.bellWrap}>
+              <MaterialIcons name="notifications-none" size={26} color="#111827" />
+              <View style={s.notifDot} />
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* ─── Hero Status Section ─── */}
-        <View style={s.heroCard}>
-          <View style={s.heroHeader}>
+        {/* ─── Profile Card ─── */}
+        <View style={s.card}>
+          <View style={s.profileTop}>
+            <View style={s.profileTopLeft}>
+              <View style={s.pisLogo}>
+                <Text style={s.pisLogoText}>PIS</Text>
+              </View>
+              <View style={s.profileInfo}>
+                <Text style={s.profileName}>{guardName}</Text>
+                <Text style={s.profileMeta}>ID: {guardId} • Security Guard</Text>
+              </View>
+            </View>
+            <View style={[s.statusPill, { backgroundColor: statusBg }]}>
+              {isPaid && <MaterialIcons name="check-circle-outline" size={12} color={statusColor} style={{ marginRight: 2 }} />}
+              <Text style={[s.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
+          </View>
+          
+          <View style={s.divider} />
+          
+          <View style={s.profileBottom}>
             <View>
-              <Text style={s.heroPeriodLabel}>Payment Period</Text>
-              <Text style={s.heroPeriodVal}>{periodName}</Text>
+              <Text style={s.monthLabel}>SALARY MONTH / वेतन माह</Text>
+              <Text style={s.monthValue}>{periodName}</Text>
             </View>
-            <View style={[s.statusBadge, { backgroundColor: statusBg, borderColor: statusColor + '20' }]}>
-              <MaterialIcons name="check-circle" size={14} color={statusColor} />
-              <Text style={[s.statusBadgeText, { color: statusColor }]}>{statusLabel}</Text>
+            <Image source={{ uri: avatarUrl }} style={s.avatar} />
+          </View>
+        </View>
+
+        {/* ─── Earnings Card ─── */}
+        <View style={[s.card, { padding: 0, overflow: 'hidden' }]}>
+          <View style={s.cardHeader}>
+            <MaterialIcons name="payments" size={20} color="#111827" />
+            <Text style={s.cardHeaderTitle}>Earnings / कमाई</Text>
+          </View>
+          <View style={s.cardBody}>
+            <View style={s.row}>
+              <Text style={s.rowLabel}>Base Salary / मूल वेतन</Text>
+              <Text style={s.rowValue}>₹{baseSalary.toLocaleString('en-IN')}</Text>
+            </View>
+            {allowances > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Allowances / भत्ते</Text>
+                <Text style={s.rowValue}>₹{allowances.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            <View style={s.row}>
+              <Text style={s.rowLabel}>Overtime / अतिरिक्त समय</Text>
+              <Text style={s.rowValue}>₹{overtimeAmt.toLocaleString('en-IN')}</Text>
+            </View>
+            {bonus > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Bonus / बोनस</Text>
+                <Text style={s.rowValue}>₹{bonus.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            
+            <View style={s.dottedDivider} />
+            
+            <View style={s.row}>
+              <Text style={s.totalLabel}>GROSS TOTAL / कुल कमाई</Text>
+              <Text style={s.totalValue}>₹{grossEarnings.toLocaleString('en-IN')}</Text>
             </View>
           </View>
+        </View>
+
+        {/* ─── Deductions Card ─── */}
+        <View style={[s.card, { padding: 0, overflow: 'hidden', borderColor: '#fee2e2' }]}>
+          <View style={[s.cardHeader, { backgroundColor: '#fff5f5' }]}>
+            <MaterialIcons name="arrow-upward" size={20} color="#dc2626" style={{ transform: [{ rotate: '45deg' }] }} />
+            <Text style={[s.cardHeaderTitle, { color: '#dc2626' }]}>Deductions / कटौतियां</Text>
+          </View>
+          <View style={s.cardBody}>
+            {pf > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Provident Fund (PF)</Text>
+                <Text style={s.rowValueRed}>₹{pf.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            {esi > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>ESI</Text>
+                <Text style={s.rowValueRed}>₹{esi.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            <View style={s.row}>
+              <Text style={s.rowLabel}>Late Penalty / देरी दंड</Text>
+              <Text style={s.rowValueRed}>₹{latePenalty.toLocaleString('en-IN')}</Text>
+            </View>
+            {uniformDed > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Uniform / वर्दी</Text>
+                <Text style={s.rowValueRed}>₹{uniformDed.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            {advanceDed > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Advance / अग्रिम</Text>
+                <Text style={s.rowValueRed}>₹{advanceDed.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            {otherDed > 0 && (
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Others / अन्य</Text>
+                <Text style={s.rowValueRed}>₹{otherDed.toLocaleString('en-IN')}</Text>
+              </View>
+            )}
+            
+            <View style={s.dottedDivider} />
+            
+            <View style={s.row}>
+              <Text style={[s.totalLabel, { color: '#dc2626' }]}>TOTAL DEDUCTIONS / कुल कटौती</Text>
+              <Text style={[s.totalValue, { color: '#dc2626' }]}>₹{totalDeductions.toLocaleString('en-IN')}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ─── Net Payable Card ─── */}
+        <View style={s.netPayCard}>
+          <View style={s.netPayTop}>
+            <View>
+              <Text style={s.netPayLabelEn}>NET PAYABLE AMOUNT</Text>
+              <Text style={s.netPayLabelHi}>निवल वेतन</Text>
+            </View>
+            <MaterialIcons name="account-balance-wallet" size={28} color="rgba(255,255,255,0.3)" />
+          </View>
+          <Text style={s.netPayAmount}>₹{netPayable.toLocaleString('en-IN')}</Text>
           
-          <View style={s.netPayCard}>
-            <Text style={s.netPayLabel}>Net Salary Credited</Text>
-            <Text style={s.netPayVal}>₹{slipData.final_salary.toLocaleString('en-IN')}</Text>
-          </View>
-        </View>
-
-        {/* ─── Earnings Section ─── */}
-        <View style={s.breakdownSection}>
-          <View style={s.sectionTitleRow}>
-            <MaterialIcons name="payments" size={20} color={Colors.primary} />
-            <Text style={s.sectionTitle}>Earnings</Text>
-          </View>
-          
-          <View style={s.itemsCard}>
-            <View style={s.breakdownItem}>
+          <View style={s.paymentInfoBox}>
+            <View style={s.paymentInfoLeft}>
+              <View style={s.bankIconWrap}>
+                <MaterialIcons name="account-balance" size={18} color="#fff" />
+              </View>
               <View>
-                <Text style={s.itemTitle}>Base Salary</Text>
-                <Text style={s.itemSubtitle}>Monthly Fixed Pay</Text>
+                <Text style={s.bankText}>{guardInfo?.bank_name || 'Bank'} Transfer • ****{guardInfo?.bank_account_number ? guardInfo.bank_account_number.slice(-4) : 'XXXX'}</Text>
+                <Text style={s.paidDateText}>
+                  {isPaid ? `Paid on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'Pending Payment'}
+                </Text>
               </View>
-              <Text style={s.itemAmount}>₹{slipData.pro_rated_salary.toLocaleString('en-IN')}</Text>
             </View>
-
-            {slipData.overtime_amount > 0 && (
-              <View style={s.breakdownItem}>
-                <View>
-                  <Text style={s.itemTitle}>Overtime</Text>
-                  <Text style={s.itemSubtitle}>
-                    {estimatedOtHours > 0 ? `${estimatedOtHours} Hours @ ₹204/hr` : 'Overtime Benefits'}
-                  </Text>
-                </View>
-                <Text style={[s.itemAmount, { color: Colors.successGreen, fontWeight: '700' }]}>
-                  +₹{slipData.overtime_amount.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            )}
+            {isPaid && <MaterialIcons name="verified" size={20} color="#10b981" />}
           </View>
         </View>
 
-        {/* ─── Deductions Section ─── */}
-        <View style={s.breakdownSection}>
-          <View style={s.sectionTitleRow}>
-            <MaterialIcons name="account-balance-wallet" size={20} color={Colors.secondary} />
-            <Text style={[s.sectionTitle, { color: Colors.secondary }]}>Deductions</Text>
-          </View>
-
-          <View style={s.itemsCard}>
-            {/* Late penalty */}
-            <View style={s.breakdownItem}>
-              <View>
-                <Text style={s.itemTitle}>Late Penalty</Text>
-                <Text style={s.itemSubtitle}>Grace period breaches</Text>
-              </View>
-              <Text style={[s.itemAmount, { color: Colors.secondary }]}>
-                -₹{slipData.penalty_amount.toLocaleString('en-IN')}
-              </Text>
-            </View>
-
-            {/* Uniform deductions */}
-            {slipData.uniform_deduction > 0 && (
-              <View style={s.breakdownItem}>
-                <View>
-                  <Text style={s.itemTitle}>Uniform Installment</Text>
-                  <Text style={s.itemSubtitle}>Uniform dues deduction</Text>
-                </View>
-                <Text style={[s.itemAmount, { color: Colors.secondary }]}>
-                  -₹{slipData.uniform_deduction.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            )}
-
-            {/* Salary Advances */}
-            {slipData.advance_deduction > 0 && (
-              <View style={s.breakdownItem}>
-                <View>
-                  <Text style={s.itemTitle}>Salary Advance</Text>
-                  <Text style={s.itemSubtitle}>Advance repayment</Text>
-                </View>
-                <Text style={[s.itemAmount, { color: Colors.secondary }]}>
-                  -₹{slipData.advance_deduction.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            )}
-
-            {/* Other Deductions */}
-            {slipData.other_deduction !== undefined && slipData.other_deduction > 0 && (
-              <View style={s.breakdownItem}>
-                <View>
-                  <Text style={s.itemTitle}>Miscellaneous</Text>
-                  <Text style={s.itemSubtitle}>{slipData.other_deduction_reason || 'Other Deductions'}</Text>
-                </View>
-                <Text style={[s.itemAmount, { color: Colors.secondary }]}>
-                  -₹{slipData.other_deduction.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            )}
-          </View>
+        {/* ─── Action Buttons ─── */}
+        <View style={s.actionsWrap}>
+          <TouchableOpacity activeOpacity={0.8} style={s.btnDownload} onPress={handleDownload}>
+            <MaterialIcons name="file-download" size={20} color="#fff" />
+            <Text style={s.btnDownloadText}>Download PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.8} style={s.btnShare} onPress={handleShare}>
+            <MaterialIcons name="share" size={20} color="#111827" />
+            <Text style={s.btnShareText}>Share</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* ─── Attendance Summary Bento ─── */}
-        <View style={s.bentoGrid}>
-          {/* Days Present */}
-          <View style={[s.bentoCard, s.bentoCardSuccess]}>
-            <MaterialIcons name="event-available" size={22} color={Colors.successGreen} />
-            <Text style={s.bentoLabel}>Days Present</Text>
-            <Text style={s.bentoVal}>{slipData.days_present} Days</Text>
-          </View>
-
-          {/* Absents */}
-          <View style={[s.bentoCard, s.bentoCardDanger]}>
-            <MaterialIcons name="event-busy" size={22} color={Colors.secondary} />
-            <Text style={s.bentoLabel}>Absents</Text>
-            <Text style={s.bentoVal}>{absentDays} Days</Text>
-          </View>
-        </View>
-
-        {/* ─── Download CTA ─── */}
-        <TouchableOpacity activeOpacity={0.9} style={s.actionBtn} onPress={handleDownload}>
-          <MaterialIcons name="download" size={20} color="#ffffff" />
-          <Text style={s.actionBtnText}>Download PDF Payslip</Text>
-        </TouchableOpacity>
-
-        <View style={{ height: 60 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );
@@ -292,312 +324,310 @@ export default function GuardSalarySlipDetailScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0F2F5',
+    backgroundColor: '#F4F4F9',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F0F2F5',
+    backgroundColor: '#F4F4F9',
     gap: 12,
   },
   loadingText: {
-    color: Colors.outline,
+    color: '#64748b',
     fontWeight: '600',
     fontSize: 14,
   },
   backBtnText: {
     padding: 8,
   },
+  header: {
+    backgroundColor: '#F4F4F9',
+  },
+  headerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: 64,
+  },
+  iconBtn: {
+    padding: 8,
+  },
+  bellWrap: {
+    position: 'relative',
+  },
+  notifDot: {
+    position: 'absolute',
+    top: 2,
+    right: 3,
+    width: 8,
+    height: 8,
+    backgroundColor: '#dc2626',
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#F4F4F9',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: Spacing.screenPadding,
+    paddingHorizontal: 16,
     paddingTop: 16,
     gap: 16,
   },
-  heroCard: {
+  card: {
     backgroundColor: '#ffffff',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#cfdaf1',
-    borderRadius: BorderRadius.xl,
-    padding: 16,
-    elevation: 3,
+    borderColor: '#e2e8f0',
+    padding: 20,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    gap: 16,
+    shadowOpacity: 0.02,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  heroHeader: {
+  profileTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  heroPeriodLabel: {
-    fontSize: 12,
-    color: Colors.onSurfaceVariant,
-    fontWeight: '500',
-  },
-  heroPeriodVal: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.primary,
-    fontFamily: 'Inter_700Bold',
-    marginTop: 2,
-  },
-  statusBadge: {
+  profileTopLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
+    gap: 12,
   },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  netPayCard: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.lg,
-    paddingVertical: 16,
-    alignItems: 'center',
+  pisLogo: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#002752',
+    borderRadius: 12,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  netPayLabel: {
+  pisLogoText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  profileInfo: {
+    justifyContent: 'center',
+    gap: 4,
+  },
+  profileName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  profileMeta: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
+    color: '#475569',
     fontWeight: '500',
-    marginBottom: 4,
   },
-  netPayVal: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#ffffff',
-    fontFamily: 'Inter_700Bold',
-  },
-  breakdownSection: {
-    gap: 8,
-  },
-  sectionTitleRow: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  sectionTitle: {
-    fontSize: 14,
+  statusPillText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: Colors.primary,
-    fontFamily: 'Inter_700Bold',
-    textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  itemsCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cfdaf1',
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
+  divider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 16,
   },
-  breakdownItem: {
+  profileBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  monthLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  monthValue: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  cardHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  cardBody: {
+    padding: 20,
+    gap: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rowLabel: {
+    fontSize: 14,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  rowValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  rowValueRed: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#dc2626',
+  },
+  dottedDivider: {
+    height: 1,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    marginVertical: 4,
+  },
+  totalLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: 0.5,
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  netPayCard: {
+    backgroundColor: '#001e3f',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#001e3f',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  netPayTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  netPayLabelEn: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+    letterSpacing: 1,
+  },
+  netPayLabelHi: {
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  netPayAmount: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 20,
+    marginBottom: 24,
+  },
+  paymentInfoBox: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(207,218,241,0.3)',
   },
-  itemTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.onSurface,
-  },
-  itemSubtitle: {
-    fontSize: 12,
-    color: Colors.onSurfaceVariant,
-    marginTop: 2,
-  },
-  itemAmount: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.onSurface,
-  },
-  bentoGrid: {
-    flexDirection: 'row',
-    gap: Spacing.gutter,
-  },
-  bentoCard: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cfdaf1',
-    borderRadius: BorderRadius.xl,
-    padding: 12,
-    gap: 4,
-  },
-  bentoCardSuccess: {
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.successGreen,
-  },
-  bentoCardDanger: {
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.secondary,
-  },
-  bentoLabel: {
-    fontSize: 12,
-    color: Colors.onSurfaceVariant,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  bentoVal: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.onSurface,
-    fontFamily: 'Inter_700Bold',
-  },
-  actionBtn: {
-    height: 56,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
+  paymentInfoLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  bankIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
-    gap: 8,
-    elevation: 3,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    alignItems: 'center',
+  },
+  bankText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  paidDateText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  actionsWrap: {
+    flexDirection: 'row',
+    gap: 12,
     marginTop: 8,
   },
-  actionBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ffffff',
-    letterSpacing: 0.5,
-  },
-
-  
-  topBar: {
+  btnDownload: {
+    flex: 1,
+    backgroundColor: '#001e3f',
+    borderRadius: 12,
+    height: 52,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingLeft: 2,
-    paddingRight: 8,
-    height: 56,
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(195, 198, 208, 0.3)',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    zIndex: 50,
-  },
-  topBarInner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    paddingHorizontal: 8,
-  },
-  topBarLeft: {
-    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
   },
-  logoImage: {
-    width: 175,
-    height: 44,
-    resizeMode: 'contain',
-  },
-  topBarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  topBarIconBtn: {
-    position: 'relative',
-  },
-  notifBadgeRedDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.secondary,
-    borderWidth: 1.5,
-    borderColor: Colors.surfaceContainerLowest,
-  },
-  avatarSmall: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 39, 82, 0.15)',
-    overflow: 'hidden',
-  },
-  avatarSmallImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  backBtn: {
-    padding: 8,
-    marginLeft: -4,
-  },
-  topBarTitle: {
-    fontSize: 18,
+  btnDownloadText: {
+    color: '#fff',
     fontWeight: '700',
-    color: Colors.primary,
+    fontSize: 15,
   },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 24,
-    left: 16,
-    right: 16,
-    borderRadius: 36,
-    height: 72,
-    backgroundColor: '#ffffff',
+  btnShare: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    height: 52,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 208, 0.2)',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    zIndex: 100,
-  },
-  navItem: {
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.xl,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
   },
-  navItemActive: {
-    backgroundColor: Colors.primaryContainer,
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  navLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
-    marginTop: 2,
-  },
-  navLabelActive: {
-    color: '#ffffff',
+  btnShareText: {
+    color: '#111827',
     fontWeight: '700',
+    fontSize: 15,
   },
 });

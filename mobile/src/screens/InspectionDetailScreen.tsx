@@ -62,6 +62,23 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
       const d = r.created_at ? new Date(r.created_at) : new Date();
       const presentNames = Array.isArray(r.guards_present) ? r.guards_present : [];
       const absentNames = Array.isArray(r.guards_absent) ? r.guards_absent : [];
+
+      const defaultInspectionPhotos = [
+        'https://lh3.googleusercontent.com/aida-public/AB6AXuAJUr_Ma8RcU9eeT5rmmVsK_rKVlIQKkrgOXDMboZqYcdbAJuSBsUMJprB_KgfABmXpqBWy0ddeIUuEP95UTz6Mydop2m3TUyxBnvdaWNp4mNkFtnzrVa1So745n-smzjokImbpigCK0meqjlQm632baDYK87Xv5GkVj_IjeFeZ553Fj8SVnL-vQp8gus3Fpn0f1PU5a02Z0wU5gRNi2KKx_QUSUQkNva7-TCsK4B_EPgj1KLbvHGOen2OaFCQpU4zT50Ruryf4sOw',
+        'https://lh3.googleusercontent.com/aida-public/AB6AXuDDvjJzOnMKPN_h3fR2dN4Iarn9cJtC19uBY2bf0bx26UumBYfga4zJReTl9w_0Nb8hUc7s3PFPg8R38TjWYajQzGI9NWUpWAxkytjiBeeMwiobUpnExIxw4Irih507tfsO9I9p4ga36I0O_S_jwIW2VP3q9hO-jQfsS39Oh-VGq3D9Uev_-WeRhkbozaSs2E8xkIfT9XuQKja9SZZi5LH6Ro_yc38vyJ8dAeiQrZ_u6KApguM6c9kTIPqxCA75sCeDGGn3ei9VPto',
+        'https://lh3.googleusercontent.com/aida-public/AB6AXuCi0wfXU37UuCJ6Qw8Asu-ABQBBlolJi-4IhrjGHRoVVjlnfHlMDMBJNAEQbzSoKSmPNSpMqPYenGv-nNAx4HvJtPyF7-RIsLDm1JRqgbDGz8KPNAWVmg7u6dirtm0FpOUhbcRFyYUHcC_4lxKC-pBGNd3uz6GdofZalumxsQWr1N-w_WepfLz74IVHquhHnhWtch6yitWJxT1D8a5NbU5PNfTxFq-fGxsf0z44UbCqNGeRvmE7QCOeUDFp7UQxKt6Un-zJdIA-RQo',
+      ];
+
+      const defaultIncidentPhotos = [
+        'https://lh3.googleusercontent.com/aida-public/AB6AXuCIVdS9QBp5DGqFYfKXXVC7oT6iBzwOwaoRqI3KQjOiNUj-SyUPPMIks6mPraDk31MUfGl576tipty0v8NLvbuE4kueB_p6RK02AzH8oFdBSGVsfzeeBQXFUeOefd2H2NvxF5Bj1Hqn0Wlwi9Ins9DFVf0t5kSghhuzS17zSAlhQLHKlKRnR0WvMmWa3YaK-3HK-Of-dFY4B3YS9hmDwFzOQ9LPzniOWcu_Y7cJPZZVrHqwSVwqdZDDCJudNrDfA_ex036NPDNU2jA',
+        'https://lh3.googleusercontent.com/aida-public/AB6AXuB5UL3Fmff8BDWs6VLYf1zrQtPE66TjNwJWK4pb3jb7MWeHRi8fBSW8dkNC6ihMsEkaz5aTHNmKOm_c9sHG6Shx10fUjIon8GxG4UrxeNbeFxJN5HDAAp5jLFiZJJdukdanGNMgP99ORONH6m2LP3PdmrBUSVY6nwa1QlpILL1p-6V4JTQMPIlEt40zvZQpiOL5z32X2zARSRv8cAAI9Lg0LTb9gRgkP1VdzfuAs-LUUavQgL1Holxlhvt7toMYJF7ux_vTyNWEEVI',
+      ];
+
+      const allPhotos = r.photos && r.photos.length > 0 ? r.photos : defaultInspectionPhotos;
+      const incidentPhotos = r.incident_reported ? defaultIncidentPhotos : [];
+      const inspectionPhotos = allPhotos;
+      const mapImage = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDry2exr_vqN_3PwIKVGcPRYM_FULO-H2RkOCkra9WLsl2IIEIid-c1XulNN30ll8XOTt1t-dhTthLsB3BrXwqUeTFeAlkDMElBUZdTK-suqWAB1Fmk3qb03K8amm6kOraHjVgbPxAdukC-VaAKjzFRndd1jueZjAxzczr2UEwt0g_0hFC57LBsaB3tPEDiC_-YEFoCKhrokWlMVPxTrXwjhsEQlnkzMwqupXnIF1Tf7fnOTnDZ4ntRZrdvwZLNd_NW2E9UAoHlH2E';
+
       setReport({
         id: r.id,
         siteName: r.sites?.site_name || 'Unknown Site',
@@ -79,7 +96,9 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
         incidentLevel: r.incident_reported ? (r.incident_severity === 'high' || r.incident_severity === 'critical' ? 'high' : 'minor') : 'none',
         remarks: r.remarks || '',
         incidentDesc: r.incident_description,
-        inspectionPhotos: r.photos || [],
+        incidentPhotos,
+        inspectionPhotos,
+        mapImage,
       });
     } catch (err: any) {
       console.error('Failed to fetch inspection detail:', err);
@@ -119,7 +138,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
         <ScrollView style={s.scrollView} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Info Card Skeleton */}
           <View style={s.infoCard}>
-            <View style={s.infoHeaderRow}>
+            <View style={[s.infoTextWrap, { gap: 12 }]}>
               <View style={[s.infoTextWrap, { gap: 8 }]}>
                 <Skeleton width="75%" height={22} />
                 <View style={[s.addressRow, { gap: 6 }]}>
@@ -178,7 +197,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
 
           {/* Remarks Section Skeleton */}
           <View style={s.remarksSection}>
-            <View style={[s.sectionHeader, { flexDirection: 'row', gap: 6 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <MaterialIcons name="edit-note" size={20} color={Colors.primary} />
               <Skeleton width="40%" height={16} />
             </View>
@@ -242,7 +261,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
 
       {/* ═══ TopAppBar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -254,7 +273,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
               style={s.backBtn}
               aria-label="Back"
             >
-              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+              <MaterialIcons name="arrow-back" size={24} color={Colors.onPrimary} />
             </TouchableOpacity>
             <Text style={s.topBarTitle} numberOfLines={1}>
               Inspection Detail
@@ -262,7 +281,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
           </View>
           <View style={s.topBarRight}>
             <TouchableOpacity activeOpacity={0.7} style={s.topBarIconBtn} onPress={() => navigation.navigate('NotificationCenter')}>
-              <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
+              <MaterialIcons name="notifications" size={24} color={Colors.onPrimary} />
             </TouchableOpacity>
             <View style={s.avatarSmall}>
               <Image
@@ -281,27 +300,25 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
       >
         {/* ═══ Site Info Section ═══ */}
         <View style={s.infoCard}>
-          <View style={s.infoHeaderRow}>
-            <View style={s.infoTextWrap}>
-              <Text style={s.siteName}>{report.siteName}</Text>
-              <View style={s.addressRow}>
-                <MaterialIcons name="location-on" size={16} color={Colors.primary} />
-                <Text style={s.addressText}>{report.siteAddress}</Text>
-              </View>
+          <View style={s.infoTextWrap}>
+            <Text style={s.siteName}>{report.siteName}</Text>
+            <View style={s.addressRow}>
+              <MaterialIcons name="location-on" size={16} color={Colors.primary} style={{ marginTop: 2 }} />
+              <Text style={s.addressText}>{report.siteAddress}</Text>
             </View>
-            {/* Visit Date Badge */}
-            <View style={s.visitDateBadge}>
-              <MaterialIcons name="calendar-today" size={18} color={Colors.onPrimaryFixed} />
-              <View style={s.visitDateTextWrap}>
-                <Text style={s.visitDateLabel}>Date of Visit</Text>
-                <Text style={s.visitDateValue}>{report.date}</Text>
-              </View>
+          </View>
+          {/* Visit Date Badge */}
+          <View style={s.visitDateBadge}>
+            <MaterialIcons name="calendar-today" size={18} color={Colors.onPrimaryFixed} />
+            <View style={s.visitDateTextWrap}>
+              <Text style={s.visitDateLabel}>Date of Visit</Text>
+              <Text style={s.visitDateValue}>{report.date}</Text>
             </View>
           </View>
 
           <View style={s.divider} />
 
-          {/* Grid row for Inspector & GPS */}
+          {/* Stacked row for Inspector & GPS */}
           <View style={s.gridRow}>
             <View style={s.gridCell}>
               <View style={s.gridIconCircle}>
@@ -375,8 +392,13 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
             </View>
 
             <View style={s.incidentCardHeader}>
-              <View style={s.severityBadge}>
-                <Text style={s.severityBadgeText}>High Severity</Text>
+              <View style={[
+                s.severityBadge,
+                report.incidentLevel !== 'high' && { backgroundColor: Colors.warningAmber }
+              ]}>
+                <Text style={s.severityBadgeText}>
+                  {report.incidentLevel === 'high' ? 'High Severity' : 'Minor Severity'}
+                </Text>
               </View>
               <Text style={s.incidentTitle}>Unauthorized Entry Incident</Text>
             </View>
@@ -476,8 +498,32 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
           </View>
         )}
 
-        <View style={{ height: 30 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
+      <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>
+        {navItems.map((item) => {
+          const isActive = item.key === 'more';
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[s.navItem, isActive && s.navItemActive]}
+              activeOpacity={0.7}
+              onPress={() => handleNavPress(item.key)}
+            >
+              <MaterialIcons
+                name={item.icon as any}
+                size={24}
+                color={isActive ? '#ffffff' : Colors.onSurfaceVariant}
+              />
+              <Text style={[s.navLabel, isActive && s.navLabelActive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -488,9 +534,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   topBar: {
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: Colors.primary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outlineVariant,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: Spacing.screenPadding,
     zIndex: 50,
   },
@@ -516,7 +562,7 @@ const styles = StyleSheet.create({
   topBarTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.onPrimary,
     flex: 1,
   },
   topBarRight: {
@@ -561,15 +607,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.03,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
-  },
-  infoHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     gap: 12,
   },
   infoTextWrap: {
-    flex: 1,
     gap: 6,
   },
   siteName: {
@@ -579,23 +619,24 @@ const styles = StyleSheet.create({
   },
   addressRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginLeft: -2,
+    alignItems: 'flex-start',
+    gap: 6,
   },
   addressText: {
     fontSize: 13,
     color: Colors.onSurfaceVariant,
     lineHeight: 18,
+    flex: 1,
   },
   visitDateBadge: {
     backgroundColor: Colors.primaryFixed,
     borderRadius: BorderRadius.lg,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    width: '100%',
   },
   visitDateTextWrap: {
     flexDirection: 'column',
@@ -614,18 +655,17 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: Colors.outlineVariant,
-    marginVertical: 16,
+    marginVertical: 4,
   },
   gridRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
+    flexDirection: 'column',
+    gap: 14,
   },
   gridCell: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    width: '100%',
   },
   gridIconCircle: {
     width: 40,
@@ -648,7 +688,7 @@ const styles = StyleSheet.create({
     color: Colors.onSurface,
   },
   guardsRosterRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 12,
   },
   guardPanel: {
@@ -891,5 +931,50 @@ const styles = StyleSheet.create({
     top: '50%',
     left: '50%',
     transform: [{ translateX: -22 }, { translateY: -44 }],
+  },
+  // ── Bottom Nav (Floating pill style) ──
+  bottomNav: {
+    position: 'absolute',
+    bottom: 24,
+    left: '5%',
+    right: '5%',
+    width: '90%',
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.2)',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    zIndex: 100,
+  },
+  navItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.xl,
+  },
+  navItemActive: {
+    backgroundColor: Colors.primaryContainer,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  navLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  navLabelActive: {
+    color: '#ffffff',
+    fontWeight: '700',
   },
 });
