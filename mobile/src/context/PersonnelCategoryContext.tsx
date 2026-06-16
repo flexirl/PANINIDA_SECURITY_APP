@@ -327,7 +327,7 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
       );
       
       if (validClientIds.length === 0 && clientScopedCategoryIds.length > 0) {
-        console.error('All client-scoped category IDs are invalid. No matching categories found in database.');
+        console.warn('All client-scoped category IDs are invalid. No matching categories found in database.');
         return {
           ids: [],
           error: 'Unable to load personnel categories for your site. Please contact support.',

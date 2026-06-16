@@ -25,7 +25,7 @@ import CachedImage from '../components/CachedImage';
 export default function ProfileScreen({ navigation }: { navigation: any }) {
   const s = useScaledStyles(styles);
   const insets = useSafeAreaInsets();
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, signOutUser } = useAuth();
   const { getLabel } = usePersonnelCategory();
   const { upload } = useFileUpload();
 
@@ -142,11 +142,16 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: () => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Login' }],
-          });
+        onPress: async () => {
+          try {
+            await signOutUser();
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+          } catch (err: any) {
+            Alert.alert('Logout Error', err.message);
+          }
         },
       },
     ]);

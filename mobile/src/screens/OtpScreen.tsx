@@ -14,6 +14,9 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   TextInputKeyPressEventData,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
@@ -301,11 +304,21 @@ export default function OtpScreen({ navigation, route }: OtpScreenProps) {
   }));
 
   return (
-    <TouchableWithoutFeedback onPress={dismissKeyboard}>
-      <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+    <KeyboardAvoidingView 
+      style={{ flex: 1, backgroundColor: Colors.background }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView 
+        contentContainerStyle={s.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <TouchableWithoutFeedback onPress={dismissKeyboard}>
+          <View style={s.innerContainer}>
+            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
-        <View style={s.content}>
+            <View style={s.content}>
           {/* Shield Icon */}
           <View style={s.iconContainer}>
             <View style={s.iconCircle}>
@@ -393,11 +406,8 @@ export default function OtpScreen({ navigation, route }: OtpScreenProps) {
           </View>
         </View>
 
-        {/* Footer */}
-        <View style={s.footer}>
-          <MaterialIcons name="lock" size={14} color={Colors.onSurfaceVariant} />
-          <Text style={s.footerText}>SECURED BY PAN INDIA SENTINEL</Text>
-        </View>
+          </View>
+        </TouchableWithoutFeedback>
 
         {/* ============ SUCCESS OVERLAY ============ */}
         {showSuccess && (
@@ -467,18 +477,21 @@ export default function OtpScreen({ navigation, route }: OtpScreenProps) {
             </Animated.View>
           </Animated.View>
         )}
-      </View>
-    </TouchableWithoutFeedback>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollContent: {
+    flexGrow: 1,
+  },
+  innerContainer: {
     flex: 1,
-    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.screenPadding,
+    paddingVertical: 40,
   },
   content: {
     width: '100%',
@@ -599,29 +612,22 @@ const styles = StyleSheet.create({
   },
   resendButton: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginTop: 4,
   },
   resendButtonActive: {
     color: Colors.primary,
+    borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.surfaceContainerLowest,
   },
   resendButtonDisabled: {
     color: Colors.outline,
-    opacity: 0.5,
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 32,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     opacity: 0.6,
-  },
-  footerText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.onSurfaceVariant,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
   },
 
   // ===== Success Overlay Styles =====

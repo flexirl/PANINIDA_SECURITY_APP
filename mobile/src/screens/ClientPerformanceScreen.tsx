@@ -17,8 +17,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
-import { getClientPerformanceOverview, submitWorkforceRating } from '../api/clientPortalService';
+import { getClientPerformanceOverview, submitWorkforceRating, getClientSiteInfo } from '../api/clientPortalService';
 import { signOut } from '../api/authService';
+import ClientTopNav from '../components/ClientTopNav';
+import ClientBottomNav from '../components/ClientBottomNav';
 import type { WorkforcePersonnel } from '../types/workforce';
 
 export default function ClientPerformanceScreen({ navigation }: any) {
@@ -36,12 +38,18 @@ export default function ClientPerformanceScreen({ navigation }: any) {
   const [reviewText, setReviewText] = useState('');
   const [appreciation, setAppreciation] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
+  const [clientSiteId, setClientSiteId] = useState<string | null>(null);
 
   const loadData = async (isRefreshing = false) => {
     try {
       if (!isRefreshing) setLoading(true);
       const data = await getClientPerformanceOverview();
       setPerformanceData(data);
+      // Also resolve the client's site ID for the Report button
+      try {
+        const siteInfo = await getClientSiteInfo();
+        if (siteInfo) setClientSiteId(siteInfo.id);
+      } catch (_) {}
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to retrieve performance metrics.');
     } finally {
@@ -199,7 +207,7 @@ export default function ClientPerformanceScreen({ navigation }: any) {
             <TouchableOpacity
               style={s.actionButton}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('RaiseComplaint', { siteId: item.category_id })}
+              onPress={() => clientSiteId && navigation.navigate('ClientRaiseComplaint', { siteId: clientSiteId })}
             >
               <MaterialIcons name="report" size={18} color={Colors.secondary} style={s.actionIcon} />
               <Text style={s.actionBtnText}>REPORT</Text>
@@ -221,28 +229,9 @@ export default function ClientPerformanceScreen({ navigation }: any) {
   };
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 8) }]}>
+    <View style={[s.container]}>
       {/* Top App Bar */}
-      <View style={s.header}>
-        <View style={s.brandBar}>
-          <View style={s.logoContainer}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
-              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-            </TouchableOpacity>
-            <Image
-              alt="PIS Logo"
-              style={s.logoImage}
-              source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw'
-              }}
-            />
-            <Text style={s.brandText}>PIS</Text>
-          </View>
-          <TouchableOpacity onPress={handleLogout}>
-            <Text style={s.logoutBtnText}>LOGOUT</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ClientTopNav showBack />
 
       {loading ? (
         <View style={s.center}>
@@ -253,7 +242,7 @@ export default function ClientPerformanceScreen({ navigation }: any) {
           data={performanceData}
           keyExtractor={(item) => item.id}
           renderItem={renderPersonnelItem}
-          contentContainerStyle={s.listContainer}
+          contentContainerStyle={[s.listContainer, { paddingBottom: 100 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
@@ -269,7 +258,7 @@ export default function ClientPerformanceScreen({ navigation }: any) {
                     {renderStars(parseFloat(siteAverageScore), 32)}
                   </View>
                   <Text style={s.heroTitle}>Overall Site Performance</Text>
-                  <Text style={s.heroSubtitle}>Analysis based on 32 validated audit reviews this month</Text>
+                  <Text style={s.heroSubtitle}>Analysis based on {performanceData.length} active personnel reviews</Text>
                 </View>
 
                 {/* Hero side elements (Response time & Compliance widgets) */}
@@ -370,6 +359,9 @@ export default function ClientPerformanceScreen({ navigation }: any) {
         />
       )}
 
+      {/* ═══ Bottom Navigation ═══ */}
+      <ClientBottomNav activeTab="more" />
+
       {/* Submit Rating Modal */}
       <Modal
         visible={ratingModalVisible}
@@ -456,52 +448,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center'
-  },
-  header: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.outlineVariant,
-    paddingBottom: 4
-  },
-  brandBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.screenPadding,
-    paddingTop: 12,
-    paddingBottom: 12
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceContainerLow,
-    marginRight: 12
-  },
-  logoImage: {
-    width: 32,
-    height: 32,
-    marginRight: 10,
-    resizeMode: 'contain'
-  },
-  brandText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 20,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    letterSpacing: -0.5
-  },
-  logoutBtnText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 12,
-    color: Colors.secondary,
-    letterSpacing: 0.5
   },
   listContainer: {
     paddingHorizontal: Spacing.screenPadding

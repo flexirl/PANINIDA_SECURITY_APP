@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getClientAttendance } from '../api/clientPortalService';
+import ClientTopNav from '../components/ClientTopNav';
+import ClientBottomNav from '../components/ClientBottomNav';
 
 type Granularity = 'daily' | 'weekly' | 'monthly';
 
@@ -214,61 +216,35 @@ export default function ClientAttendanceScreen({ navigation }: any) {
     });
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 8) }]}>
+    <View style={[s.container]}>
       {/* Top App Bar styled as Client Dashboard */}
-      <View style={s.header}>
-        <View style={s.brandBar}>
-          {isSearchActive ? (
-            <View style={s.searchBarContainer}>
-              <MaterialIcons name="search" size={20} color={Colors.outline} />
-              <TextInput
-                style={s.searchInput}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search staff members..."
-                placeholderTextColor={Colors.outline}
-                autoFocus
-              />
-              <TouchableOpacity
-                style={s.searchCloseButton}
-                onPress={() => {
-                  setIsSearchActive(false);
-                  setSearchQuery('');
-                }}
-              >
-                <MaterialIcons name="close" size={20} color={Colors.onSurfaceVariant} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={s.logoContainer}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
-                <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-              </TouchableOpacity>
-              <Image
-                alt="PIS Logo"
-                style={s.logoImage}
-                source={{
-                  uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw'
-                }}
-              />
-              <View style={s.brandTextContainer}>
-                <Text style={s.brandText}>PIS</Text>
-                <Text style={s.brandSubText}>ATTENDANCE</Text>
-              </View>
-            </View>
-          )}
-          <View style={s.headerActions}>
-            {!isSearchActive && (
-              <TouchableOpacity style={s.iconButton} onPress={() => setIsSearchActive(true)}>
-                <MaterialIcons name="search" size={22} color={Colors.onSurfaceVariant} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.iconButton}>
-              <MaterialIcons name="more-vert" size={22} color={Colors.onSurfaceVariant} />
+      <ClientTopNav showBack />
+
+      {/* Search Input Bar (conditionally rendered) */}
+      {isSearchActive && (
+        <View style={s.searchBarContainerWrapper}>
+          <View style={s.searchBarContainer}>
+            <MaterialIcons name="search" size={20} color={Colors.outline} />
+            <TextInput
+              style={s.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search staff members..."
+              placeholderTextColor={Colors.outline}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={s.searchCloseButton}
+              onPress={() => {
+                setIsSearchActive(false);
+                setSearchQuery('');
+              }}
+            >
+              <MaterialIcons name="close" size={20} color={Colors.onSurfaceVariant} />
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Tab Switcher */}
       <View style={s.tabBar}>
@@ -313,7 +289,7 @@ export default function ClientAttendanceScreen({ navigation }: any) {
           data={filteredPersonnel}
           keyExtractor={(item) => item.personnel_id}
           renderItem={renderPersonnelItem}
-          contentContainerStyle={[s.listContainer]}
+          contentContainerStyle={[s.listContainer, { paddingBottom: 100 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
@@ -415,6 +391,9 @@ export default function ClientAttendanceScreen({ navigation }: any) {
           }
         />
       )}
+
+      {/* ═══ Bottom Navigation ═══ */}
+      <ClientBottomNav activeTab="attendance" />
     </View>
   );
 }
@@ -429,70 +408,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center'
   },
-  header: {
+  searchBarContainerWrapper: {
+    paddingHorizontal: Spacing.screenPadding,
+    paddingVertical: 12,
     backgroundColor: Colors.surfaceContainerLowest,
     borderBottomWidth: 1,
     borderBottomColor: Colors.outlineVariant,
-    paddingBottom: 4
-  },
-  brandBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.screenPadding,
-    paddingTop: 12,
-    paddingBottom: 12
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceContainerLow,
-    marginRight: 12
-  },
-  logoImage: {
-    width: 32,
-    height: 32,
-    marginRight: 10,
-    resizeMode: 'contain'
-  },
-  brandTextContainer: {
-    flexDirection: 'column'
-  },
-  brandText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 18,
-    color: Colors.primary,
-    fontWeight: 'bold',
-    lineHeight: 18
-  },
-  brandSubText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 9,
-    color: Colors.outline,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    lineHeight: 10
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceContainerLow,
-    marginLeft: 8
   },
   searchBarContainer: {
     flexDirection: 'row',

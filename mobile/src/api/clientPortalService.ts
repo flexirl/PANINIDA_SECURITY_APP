@@ -190,7 +190,7 @@ export async function getClientAttendance(
 
   const overallPercentage = totalExpected > 0 ? (presentCount / totalExpected) * 100 : 100;
 
-  const personnelBreakdown = personnelIds.map(pid => {
+  const personnel_breakdown = personnelIds.map(pid => {
     const p = personnelMap.get(pid);
     const records = attendanceByPersonnel.get(pid) || [];
 
@@ -229,30 +229,102 @@ export async function getClientAttendance(
 
 /**
  * Task 14.4: Retrieve verification documents for a personnel, filtered to client-permitted types.
+ * Queries both workforce_documents (admin/workforce uploads) and guard_documents (guard module uploads).
  */
 export async function getClientDocuments(personnelId: string): Promise<WorkforceDocument[]> {
+  // Client-permitted document types — includes both admin and guard naming conventions
   const permittedTypes = [
-    'aadhaar',
+    'aadhaar_front',
+    'aadhaar_back',
+    'aadhaar',              // guard module uploads Aadhaar as single type
     'pan',
+    'address_proof',        // guard module maps PAN Card to 'address_proof'
     'police_verification',
-    'security_training_certificate',
-    'weapon_training_certificate',
+    'security_training',
+    'weapon_training',
     'gun_license',
     'ex_servicemen_proof'
   ];
 
-  const { data, error } = await supabase
+  // 1. Query workforce_documents table (admin/workforce uploads via useFileUpload or uploadDocument)
+  const { data: wfDocsRaw, error: wfError } = await supabase
     .from('workforce_documents')
     .select('*')
     .eq('personnel_id', personnelId)
     .in('document_type', permittedTypes);
 
-  if (error) {
-    console.error('Error fetching client documents:', error.message);
-    throw error;
+  if (wfError) {
+    console.error('Error fetching workforce documents:', wfError.message);
   }
 
-  return data || [];
+  // 2. Also query guard_documents table (guard module uploads via legacy guards endpoint)
+  let gDocsRaw: any[] = [];
+  try {
+    const { data: gDocs, error: gError } = await supabase
+      .from('guard_documents')
+      .select('*')
+      .eq('guard_id', personnelId);
+
+    if (!gError && gDocs) {
+      gDocsRaw = gDocs;
+    }
+  } catch (err) {
+    console.warn('guard_documents query skipped:', err);
+  }
+
+  let aadhaarCount = 0;
+
+  // Helper function to map document_type to separate front/back for aadhaar
+  const mapAndFormatDocs = (docs: any[], isGuardDoc: boolean): WorkforceDocument[] => {
+    return docs
+      .filter((d: any) => permittedTypes.includes(d.document_type))
+      .map((d: any) => {
+        let docType = d.document_type;
+
+        // Distinguish between Aadhaar Front and Back
+        if (docType === 'aadhaar') {
+          const nameOrUrl = ((d.document_name || '') + ' ' + (d.document_url || d.file_url || '')).toLowerCase();
+          if (nameOrUrl.includes('back')) {
+            docType = 'aadhaar_back';
+          } else if (nameOrUrl.includes('front')) {
+            docType = 'aadhaar_front';
+          } else {
+            // Fallback if keywords aren't present: first is front, second is back
+            docType = aadhaarCount === 0 ? 'aadhaar_front' : 'aadhaar_back';
+            aadhaarCount++;
+          }
+        }
+
+        return {
+          id: d.id,
+          personnel_id: personnelId,
+          document_type: docType,
+          file_url: d.document_url || d.file_url || '',
+          uploaded_by: d.uploaded_by || '',
+          verified: isGuardDoc ? (d.verified ?? false) : (d.verified || false),
+          verified_by: d.verified_by || null,
+          verified_at: d.verified_at || null,
+          created_at: d.uploaded_at || d.created_at || '',
+          updated_at: d.uploaded_at || d.updated_at || d.created_at || '',
+        } as WorkforceDocument;
+      });
+  };
+
+  const formattedWfDocs = mapAndFormatDocs(wfDocsRaw || [], false);
+  const formattedGuardDocs = mapAndFormatDocs(gDocsRaw || [], true);
+
+  // 3. Merge results — prefer workforce_documents when both exist for same document_type
+  const allDocs = [...formattedWfDocs];
+  const existingTypes = new Set(allDocs.map(d => d.document_type));
+
+  for (const gDoc of formattedGuardDocs) {
+    if (!existingTypes.has(gDoc.document_type)) {
+      allDocs.push(gDoc);
+      existingTypes.add(gDoc.document_type);
+    }
+  }
+
+  return allDocs;
 }
 
 /**

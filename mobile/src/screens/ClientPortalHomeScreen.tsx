@@ -18,10 +18,13 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getClientSiteInfo, getClientAttendance, getClientPerformanceOverview } from '../api/clientPortalService';
 import { getComplaintsForSite } from '../api/complaintService';
+import { getVisitorLogsForSite } from '../api/visitorLogService';
 import { signOut } from '../api/authService';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../api/supabase';
 import type { Site } from '../types/workforce';
+import ClientTopNav from '../components/ClientTopNav';
+import ClientBottomNav from '../components/ClientBottomNav';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -41,7 +44,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
     percentage: 0,
   });
   const [openComplaintsCount, setOpenComplaintsCount] = useState(0);
-  const [performanceScore, setPerformanceScore] = useState('4.8');
+  const [activeVisitorsCount, setActiveVisitorsCount] = useState(0);
   const [isInactive, setIsInactive] = useState(false);
 
   const fetchData = async () => {
@@ -69,18 +72,13 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
       ).length;
       setOpenComplaintsCount(openCount);
 
-      // Fetch performance score
+      // Fetch active visitors count
       try {
-        const perfData = await getClientPerformanceOverview();
-        const activeRatings = perfData.map((p: any) => p.rating_summary?.average_rating).filter((r: number) => r > 0);
-        if (activeRatings.length > 0) {
-          const avg = activeRatings.reduce((sum: number, val: number) => sum + val, 0) / activeRatings.length;
-          setPerformanceScore(avg.toFixed(1));
-        } else {
-          setPerformanceScore('4.8');
-        }
+        const visitorLogs = await getVisitorLogsForSite(siteInfo.id);
+        const activeCount = visitorLogs.filter((log) => log.status === 'active').length;
+        setActiveVisitorsCount(activeCount);
       } catch (e) {
-        setPerformanceScore('4.8');
+        setActiveVisitorsCount(0);
       }
 
       setIsInactive(false);
@@ -88,7 +86,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
       if (err?.message?.includes('inactive') || err?.message?.includes('deactivated')) {
         setIsInactive(true);
       } else {
-        Alert.alert('Error', err?.message || 'Failed to load client portal dashboard');
+        Alert.alert('Error', err?.message || 'Failed to load client portal dashboard.');
       }
     } finally {
       setLoading(false);
@@ -146,31 +144,10 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
       {/* ═══ Header App Bar ═══ */}
-      <View style={[s.header, { height: 56 + insets.top, paddingTop: insets.top }]}>
-        <View style={s.headerInner}>
-          <View style={s.logoContainer}>
-            <Image
-              alt="Pan India Security Official Eagle Logo"
-              style={s.logoImage}
-              source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9Er0KEhzi1SGHxy9tveR8S8Rv75AaVW4UOzQE3AJmfXJm6AVqQE7ilqzSqwZKr04wOplhfm29vGwqE9KcTt3DObEz98QZA-qL7PpXc34fmeN6Axa6LiksDqZjURzrjR6M0SR1IUVbEdVhWfLfjQgu2VmoWyKPwkg2r3eoxItrdEVIUL2EaCBQTQx4ZzcSzfbdPYtZFMjhAOQLfgDH3u5SzBXV8WrZF4CEGm473zRLTDvTOux2TUkm_NZZa0Eiu_TCfw',
-              }}
-            />
-          </View>
-          <View style={s.headerActions}>
-            <TouchableOpacity style={s.iconButton}>
-              <MaterialIcons name="notifications-none" size={24} color="#43474f" />
-              <View style={s.badgeDot} />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.iconButton} onPress={handleLogout}>
-              <MaterialIcons name="logout" size={22} color="#b22b1d" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+      <ClientTopNav />
 
       <ScrollView
-        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#002752']} />}
       >
@@ -195,17 +172,6 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
               <Text style={s.addressText}>{site?.address || 'Phase III, Sector 24, Gurugram, Haryana 122002, India'}</Text>
             </View>
           </View>
-          <View style={s.divider} />
-          <View style={s.siteContactsRow}>
-            <View style={s.contactCol}>
-              <Text style={s.contactLabel}>PRESIDENT</Text>
-              <Text style={s.contactValue}>{site?.society_president_name || 'Vikram Sethi'}</Text>
-            </View>
-            <View style={s.contactCol}>
-              <Text style={s.contactLabel}>SECRETARY</Text>
-              <Text style={s.contactValue}>{site?.society_secretary_name || 'Ananya Sharma'}</Text>
-            </View>
-          </View>
         </View>
 
         {/* ─── Metrics Grid 2x2 ─── */}
@@ -220,7 +186,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             </View>
             <View>
               <Text style={s.metricValue}>
-                {attendanceStats.total > 0 ? `${attendanceStats.present}/${attendanceStats.total}` : '18/20'}
+                {`${attendanceStats.present}/${attendanceStats.total}`}
               </Text>
               <Text style={s.metricLabel}>Attendance</Text>
             </View>
@@ -236,7 +202,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             </View>
             <View>
               <Text style={s.metricValue}>
-                {attendanceStats.percentage > 0 ? `${attendanceStats.percentage}%` : '92%'}
+                {`${attendanceStats.percentage}%`}
               </Text>
               <Text style={s.metricLabel}>Daily Rate</Text>
             </View>
@@ -253,19 +219,23 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* Quality Rating */}
-          <View style={s.metricCard}>
+          {/* Visitor Log */}
+          <TouchableOpacity 
+            style={s.metricCard}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('ClientVisitorLog')}
+          >
             <View style={s.metricHeader}>
-              <MaterialIcons name="star" size={24} color="#f59e0b" />
-              <View style={s.trendBadge}>
-                <Text style={s.trendText}>HIGH</Text>
+              <MaterialIcons name="groups" size={24} color="#15803d" />
+              <View style={[s.trendBadge, { backgroundColor: 'rgba(21, 128, 61, 0.1)' }]}>
+                <Text style={[s.trendText, { color: '#15803d' }]}>ACTIVE</Text>
               </View>
             </View>
             <View>
-              <Text style={[s.metricValue, { color: '#d97706' }]}>{performanceScore}/5.0</Text>
-              <Text style={s.metricLabel}>Quality Rating</Text>
+              <Text style={[s.metricValue, { color: '#15803d' }]}>{activeVisitorsCount}</Text>
+              <Text style={s.metricLabel}>Visitor Log</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* ─── Site Management Section ─── */}
@@ -288,7 +258,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
               <MaterialIcons name="badge" size={28} color="#00132d" />
             </View>
             <View style={s.moduleInfo}>
-              <Text style={s.moduleTitleText}>Workforce Roster</Text>
+              <Text style={s.moduleTitleText}>Staff List</Text>
               <Text style={s.moduleSubText}>Staff Allocation & Shifts</Text>
             </View>
             <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
@@ -310,21 +280,6 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
           </TouchableOpacity>
 
-          {/* Verification Docs */}
-          <TouchableOpacity
-            style={s.moduleCard}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('ClientDocumentView')}
-          >
-            <View style={[s.moduleIconContainer, { backgroundColor: '#fffbeb' }]}>
-              <MaterialIcons name="gavel" size={28} color="#b45309" />
-            </View>
-            <View style={s.moduleInfo}>
-              <Text style={s.moduleTitleText}>Verification Docs</Text>
-              <Text style={s.moduleSubText}>Compliance & KYC</Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
-          </TouchableOpacity>
 
           {/* Performance */}
           <TouchableOpacity
@@ -359,7 +314,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
             </View>
             <View style={s.complaintBannerRight}>
               <View style={[s.pendingBadge, { backgroundColor: '#B02021' }]}>
-                <Text style={s.pendingText}>2 PENDING</Text>
+                <Text style={s.pendingText}>{openComplaintsCount > 0 ? `${openComplaintsCount} PENDING` : 'NONE'}</Text>
               </View>
               <MaterialIcons name="chevron-right" size={24} color="#c3c6d0" />
             </View>
@@ -381,6 +336,9 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
           <Text style={s.copyrightText}>© 2026 PAN India Security</Text>
         </View>
       </ScrollView>
+
+      {/* ═══ Bottom Navigation ═══ */}
+      <ClientBottomNav activeTab="home" />
     </View>
   );
 }
@@ -403,59 +361,12 @@ const styles = StyleSheet.create({
     zIndex: -1,
     opacity: 0.03,
   },
-  header: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(195, 198, 208, 0.2)',
-    justifyContent: 'center',
-    zIndex: 50,
-  },
-  headerInner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    height: 56,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoImage: {
-    width: 160,
-    height: 40,
-    resizeMode: 'contain',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f4f3f7',
-  },
-  badgeDot: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ba1a1a',
-    borderWidth: 1.5,
-    borderColor: '#ffffff',
-  },
   scrollContent: {
     padding: 16,
     gap: 16,
   },
   greetingCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#002752',
     borderWidth: 1,
     borderColor: 'rgba(195, 198, 208, 0.3)',
     borderRadius: 24,
@@ -470,8 +381,9 @@ const styles = StyleSheet.create({
   greetingLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#43474f',
+    color: '#ffffff',
     letterSpacing: 1.5,
+    opacity: 0.8,
   },
   greetingNameRow: {
     flexDirection: 'row',
@@ -481,7 +393,7 @@ const styles = StyleSheet.create({
   greetingName: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#00132d',
+    color: '#ffffff',
   },
   statusDot: {
     width: 8,
@@ -492,7 +404,8 @@ const styles = StyleSheet.create({
   greetingSubtitle: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#43474f',
+    color: '#ffffff',
+    opacity: 0.9,
   },
   siteCard: {
     backgroundColor: '#ffffff',

@@ -62,6 +62,14 @@ export function getRequiredDocumentsForCategory(prefix: string): { type: string;
     );
   }
 
+  // Bouncer specific documents
+  if (prefix === 'BNC') {
+    list.push(
+      { type: 'bouncer_photo_1', name: 'Full Body Photo 1 / पूरा फोटो 1' },
+      { type: 'bouncer_photo_2', name: 'Full Body Photo 2 / पूरा फोटो 2' }
+    );
+  }
+
   // Housekeeping personnel (Req 6.4)
   if (prefix === 'HK') {
     list.push({ type: 'medical_fitness', name: 'Medical Fitness Certificate / मेडिकल फिटनेस प्रमाण पत्र' });

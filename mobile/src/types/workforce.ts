@@ -88,8 +88,8 @@ export interface WorkforcePersonnel {
   gender?: string;
   date_of_birth?: string;
   police_verification?: boolean;
-  height?: number;
-  weight?: number;
+  height?: string;
+  weight?: string;
   education?: string;
   created_at: string;
   updated_at: string;
@@ -131,6 +131,8 @@ export interface Site {
   society_secretary_phone?: string;
   site_manager_id?: string;
   assigned_supervisor_id?: string;
+  site_supervisor_name?: string;
+  site_supervisor_phone?: string;
   workforce_strength?: number | null;
   // Shift timings
   day_shift_start?: string;
@@ -277,6 +279,20 @@ export interface WorkforceRating {
   review_text?: string;
   appreciation: boolean;
   review_date: string;
+  created_at: string;
+}
+
+export interface VisitorLog {
+  id: string;
+  site_id: string;
+  guard_id: string;
+  visitor_name: string;
+  visitor_phone: string;
+  flat_number?: string | null;
+  purpose: string;
+  check_in_time: string;
+  check_out_time?: string | null;
+  status: 'active' | 'completed';
   created_at: string;
 }
 

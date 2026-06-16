@@ -198,6 +198,8 @@ export default function AddWorkforcePersonnelScreen({
   const [dob, setDob] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState('');
 
   // Form state — Employment
   const [categoryId, setCategoryId] = useState('');
@@ -228,12 +230,16 @@ export default function AddWorkforcePersonnelScreen({
     aadhaarBack: string | null;
     gunLicense: string | null;
     pvr: string | null;
+    bouncerPhoto1: string | null;
+    bouncerPhoto2: string | null;
   }>({
     photo: null,
     aadhaarFront: null,
     aadhaarBack: null,
     gunLicense: null,
     pvr: null,
+    bouncerPhoto1: null,
+    bouncerPhoto2: null,
   });
 
   // UI state
@@ -257,6 +263,7 @@ export default function AddWorkforcePersonnelScreen({
   // ─── Derived state ───
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const isGunman = selectedGroupId === 'gunmen';
+  const isBouncer = selectedGroupId === 'bouncers';
   const selectedGroup = MAJOR_GROUPS.find((g) => g.id === selectedGroupId);
 
   // Group categories into 4 major groups
@@ -306,6 +313,8 @@ export default function AddWorkforcePersonnelScreen({
             setDob(p.dob || '');
             setGender(p.gender || '');
             setAddress(p.address || '');
+            setHeight(p.height || '');
+            setWeight(p.weight || '');
             setCategoryId(p.category_id || '');
             
             // Map group id by matching group categories
@@ -340,12 +349,16 @@ export default function AddWorkforcePersonnelScreen({
                 aadhaarBack: null,
                 gunLicense: null,
                 pvr: null,
+                bouncerPhoto1: null,
+                bouncerPhoto2: null,
               };
               wpDocs.forEach(d => {
                 if (d.document_type === 'aadhaar_front') docsMap.aadhaarFront = d.file_url;
                 if (d.document_type === 'aadhaar_back') docsMap.aadhaarBack = d.file_url;
                 if (d.document_type === 'gun_license') docsMap.gunLicense = d.file_url;
                 if (d.document_type === 'police_verification') docsMap.pvr = d.file_url;
+                if (d.document_type === 'bouncer_photo_1') docsMap.bouncerPhoto1 = d.file_url;
+                if (d.document_type === 'bouncer_photo_2') docsMap.bouncerPhoto2 = d.file_url;
               });
               setDocs(docsMap);
             } catch (docErr) {
@@ -473,6 +486,8 @@ export default function AddWorkforcePersonnelScreen({
       { key: 'aadhaarBack', type: 'aadhaar_back' },
       { key: 'gunLicense', type: 'gun_license' },
       { key: 'pvr', type: 'police_verification' },
+      { key: 'bouncerPhoto1', type: 'bouncer_photo_1' },
+      { key: 'bouncerPhoto2', type: 'bouncer_photo_2' },
     ];
 
     for (const item of docsToUpload) {
@@ -545,6 +560,8 @@ export default function AddWorkforcePersonnelScreen({
         photo_url: uploadedPhotoUrl,
         dob: dob || undefined,
         gender: gender || undefined,
+        height: height.trim() || undefined,
+        weight: weight.trim() || undefined,
         education: education || undefined,
         police_verification: pvrChecked,
       };
@@ -951,6 +968,52 @@ export default function AddWorkforcePersonnelScreen({
                     ))}
                   </View>
                 )}
+
+                <View style={s.rowFields}>
+                  <View style={{ flex: 1 }}>
+                    <FormField label="Height (e.g. 5'9&quot;)">
+                      <View
+                        style={[
+                          s.inputContainer,
+                          focusedField === 'height' &&
+                            s.inputContainerFocused,
+                        ]}
+                      >
+                        <TextInput
+                          style={s.textInput}
+                          placeholder="Height"
+                          placeholderTextColor={Colors.outline}
+                          value={height}
+                          onChangeText={setHeight}
+                          onFocus={() => setFocusedField('height')}
+                          onBlur={() => setFocusedField(null)}
+                        />
+                      </View>
+                    </FormField>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <FormField label="Weight (e.g. 75kg)">
+                      <View
+                        style={[
+                          s.inputContainer,
+                          focusedField === 'weight' &&
+                            s.inputContainerFocused,
+                        ]}
+                      >
+                        <TextInput
+                          style={s.textInput}
+                          placeholder="Weight"
+                          placeholderTextColor={Colors.outline}
+                          value={weight}
+                          onChangeText={setWeight}
+                          onFocus={() => setFocusedField('weight')}
+                          onBlur={() => setFocusedField(null)}
+                        />
+                      </View>
+                    </FormField>
+                  </View>
+                </View>
 
                 <FormField label="Address">
                   <View
@@ -1509,6 +1572,36 @@ export default function AddWorkforcePersonnelScreen({
                       uploaded={docs.gunLicense}
                       onPress={() => handleDocUpload('gunLicense')}
                     />
+                  </>
+                )}
+
+                {/* Bouncer Photos — only for bouncers */}
+                {isBouncer && (
+                  <>
+                    <View style={s.gunLicenseDivider}>
+                      <View style={[s.gunLicenseBadge, { backgroundColor: '#3C136115' }]}>
+                        <MaterialIcons
+                          name="sports-mma"
+                          size={14}
+                          color="#3C1361"
+                        />
+                        <Text style={[s.gunLicenseBadgeText, { color: '#3C1361' }]}>
+                          BOUNCER FULL BODY PHOTOS
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={s.documentsGrid}>
+                      <DocUploadSlot
+                        label="Full Body Photo 1"
+                        uploaded={docs.bouncerPhoto1}
+                        onPress={() => handleDocUpload('bouncerPhoto1')}
+                      />
+                      <DocUploadSlot
+                        label="Full Body Photo 2"
+                        uploaded={docs.bouncerPhoto2}
+                        onPress={() => handleDocUpload('bouncerPhoto2')}
+                      />
+                    </View>
                   </>
                 )}
 

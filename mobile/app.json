@@ -40,6 +40,11 @@
       "barStyle": "dark-content",
       "backgroundColor": "#FFFFFF"
     },
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#FFFFFF",
+      "translucent": true
+    },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"

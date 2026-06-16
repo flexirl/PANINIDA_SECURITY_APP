@@ -45,6 +45,8 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
   const [radius, setRadius] = useState(100); // meters
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [siteSupervisorName, setSiteSupervisorName] = useState('');
+  const [siteSupervisorPhone, setSiteSupervisorPhone] = useState('');
   const [latitude, setLatitude] = useState(19.0760); // Default to Mumbai
   const [longitude, setLongitude] = useState(72.8777);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -424,6 +426,8 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
         night_shift_end: nightEnd,
         contact_person: contactName.trim() || clientName.trim() || 'N/A',
         contact_phone: contactPhone ? `+91${contactPhone}` : (clientPhone.length === 10 ? `+91${clientPhone}` : 'N/A'),
+        site_supervisor_name: siteSupervisorName.trim(),
+        site_supervisor_phone: siteSupervisorPhone ? `+91${siteSupervisorPhone}` : '',
       };
 
       const createdSite = await siteService.createSite(sitePayload);
@@ -861,6 +865,33 @@ export default function AddSiteScreen({ navigation }: AddSiteScreenProps) {
                   keyboardType="numeric"
                   value={contactPhone}
                   onChangeText={setContactPhone}
+                  maxLength={10}
+                />
+              </View>
+            </View>
+
+            <View style={s.inputGroup}>
+              <Text style={s.label}>Site Supervisor Name</Text>
+              <TextInput
+                style={s.input}
+                placeholder="Full name of site supervisor"
+                placeholderTextColor={Colors.outline}
+                value={siteSupervisorName}
+                onChangeText={setSiteSupervisorName}
+              />
+            </View>
+
+            <View style={s.inputGroup}>
+              <Text style={s.label}>Site Supervisor Phone</Text>
+              <View style={s.phoneInputWrapper}>
+                <Text style={s.phonePrefix}>+91</Text>
+                <TextInput
+                  style={s.phoneInput}
+                  placeholder="98765 43210"
+                  placeholderTextColor={Colors.outline}
+                  keyboardType="numeric"
+                  value={siteSupervisorPhone}
+                  onChangeText={setSiteSupervisorPhone}
                   maxLength={10}
                 />
               </View>

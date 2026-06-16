@@ -54,6 +54,8 @@ import AssignPersonnelScreen from './src/screens/AssignPersonnelScreen';
 import DocumentChecklistScreen from './src/screens/DocumentChecklistScreen';
 import RaiseComplaintScreen from './src/screens/RaiseComplaintScreen';
 import ClientComplaintListScreen from './src/screens/ClientComplaintListScreen';
+import ClientRaiseComplaintScreen from './src/screens/ClientRaiseComplaintScreen';
+import ClientComplaintDetailScreen from './src/screens/ClientComplaintDetailScreen';
 import ComplaintDetailScreen from './src/screens/ComplaintDetailScreen';
 import ComplaintTimelineScreen from './src/screens/ComplaintTimelineScreen';
 import AttendanceCorrectionScreen from './src/screens/AttendanceCorrectionScreen';
@@ -62,6 +64,12 @@ import ClientWorkforceRosterScreen from './src/screens/ClientWorkforceRosterScre
 import ClientAttendanceScreen from './src/screens/ClientAttendanceScreen';
 import ClientDocumentViewScreen from './src/screens/ClientDocumentViewScreen';
 import ClientPerformanceScreen from './src/screens/ClientPerformanceScreen';
+import ClientMoreMenuScreen from './src/screens/ClientMoreMenuScreen';
+import ClientEmergencyContactsScreen from './src/screens/ClientEmergencyContactsScreen';
+import ClientVisitorLogScreen from './src/screens/ClientVisitorLogScreen';
+import ClientStaffDetailScreen from './src/screens/ClientStaffDetailScreen';
+import GuardVisitorLogScreen from './src/screens/GuardVisitorLogScreen';
+import AddVisitorScreen from './src/screens/AddVisitorScreen';
 import SupervisorDashboardScreen from './src/screens/SupervisorDashboardScreen';
 import VacancyManagementScreen from './src/screens/VacancyManagementScreen';
 import AssignReplacementScreen from './src/screens/AssignReplacementScreen';
@@ -131,6 +139,8 @@ export type RootStackParamList = {
   DocumentChecklist: { personnelId: string };
   RaiseComplaint: { siteId?: string };
   ClientComplaintList: undefined;
+  ClientRaiseComplaint: { siteId?: string };
+  ClientComplaintDetail: { complaintId: string };
   ComplaintDetail: { complaintId: string };
   ComplaintTimeline: { complaintId: string };
   AttendanceCorrection: undefined;
@@ -139,6 +149,12 @@ export type RootStackParamList = {
   ClientAttendance: undefined;
   ClientDocumentView: { documentId: string };
   ClientPerformance: undefined;
+  ClientVisitorLog: undefined;
+  ClientStaffDetail: { personnel: any };
+  ClientEmergencyContacts: undefined;
+  GuardVisitorLog: undefined;
+  AddVisitor: undefined;
+  ClientMoreMenu: undefined;
   SupervisorDashboard: undefined;
   VacancyManagement: undefined;
   AssignReplacement: { vacancyId: string };
@@ -399,6 +415,16 @@ function AppNavigator() {
           options={{ animation: 'fade' }}
         />
         <Stack.Screen
+          name="ClientRaiseComplaint"
+          component={ClientRaiseComplaintScreen}
+          options={{ animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="ClientComplaintDetail"
+          component={ClientComplaintDetailScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
           name="ComplaintDetail"
           component={ComplaintDetailScreen}
           options={{ animation: 'slide_from_right' }}
@@ -436,6 +462,36 @@ function AppNavigator() {
         <Stack.Screen
           name="ClientPerformance"
           component={ClientPerformanceScreen}
+          options={{ animation: 'fade_from_bottom' }}
+        />
+        <Stack.Screen
+          name="ClientVisitorLog"
+          component={ClientVisitorLogScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="ClientStaffDetail"
+          component={ClientStaffDetailScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="GuardVisitorLog"
+          component={GuardVisitorLogScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="AddVisitor"
+          component={AddVisitorScreen}
+          options={{ animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="ClientMoreMenu"
+          component={ClientMoreMenuScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="ClientEmergencyContacts"
+          component={ClientEmergencyContactsScreen}
           options={{ animation: 'slide_from_right' }}
         />
         <Stack.Screen
@@ -482,6 +538,24 @@ function AppNavigator() {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View } from 'react-native';
 
+function SystemStatusBarBackground() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View 
+      style={{ 
+        position: 'absolute', 
+        top: 0, 
+        left: 0, 
+        right: 0, 
+        height: insets.top, 
+        backgroundColor: '#FFFFFF', 
+        zIndex: 99999, 
+        pointerEvents: 'none' 
+      }} 
+    />
+  );
+}
+
 function SystemNavBackground() {
   const insets = useSafeAreaInsets();
   return (
@@ -505,6 +579,7 @@ export default function App() {
     <SafeAreaProvider>
       <FontSizeProvider>
         <AppNavigator />
+        <SystemStatusBarBackground />
         <SystemNavBackground />
       </FontSizeProvider>
     </SafeAreaProvider>

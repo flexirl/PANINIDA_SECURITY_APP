@@ -78,6 +78,26 @@ function isPublicStorageUrl(url: string): boolean {
   return url.includes('/storage/v1/object/public/');
 }
 
+/**
+ * Extracts bucket and file path from a Supabase public URL.
+ * Example: https://xxx.supabase.co/storage/v1/object/public/workforce-documents/abc/file.jpg
+ */
+function parsePublicUrl(url: string): { bucket: string; filePath: string } | null {
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/');
+    // /storage/v1/object/public/{bucket}/{...filePath}
+    const publicIndex = pathParts.indexOf('public');
+    if (publicIndex === -1 || publicIndex >= pathParts.length - 1) return null;
+    const bucket = pathParts[publicIndex + 1];
+    const filePath = pathParts.slice(publicIndex + 2).join('/');
+    if (!bucket || !filePath) return null;
+    return { bucket, filePath };
+  } catch {
+    return null;
+  }
+}
+
 // ─── In-Memory Cache ───
 
 interface CacheEntry {
@@ -143,10 +163,11 @@ async function fetchSignedUrl(bucket: string, filePath: string): Promise<string>
 /**
  * Resolves an image URL to a viewable URL.
  *
- * Handles three URL formats:
+ * Handles four URL formats:
  * 1. `storage://bucket/path` → fetches a fresh signed URL
  * 2. Expired signed URL → extracts bucket/path, fetches a fresh signed URL
- * 3. Public URL → returns as-is
+ * 3. Public storage URL (private bucket) → converts to signed URL
+ * 4. External URL → returns as-is
  *
  * Results are cached in memory for 50 minutes.
  */
@@ -193,7 +214,26 @@ export async function resolveImageUrl(rawUrl: string | null | undefined): Promis
     }
   }
 
-  // Case 3: Public URL or external URL → return as-is
+  // Case 3: Public storage URL — bucket may be private, so generate signed URL
+  if (isPublicStorageUrl(rawUrl)) {
+    const parsed = parsePublicUrl(rawUrl);
+    if (parsed) {
+      const cacheKey = getCacheKey(parsed.bucket, parsed.filePath);
+      const cached = getCachedUrl(cacheKey);
+      if (cached) return cached;
+
+      try {
+        const signedUrl = await fetchSignedUrl(parsed.bucket, parsed.filePath);
+        setCachedUrl(cacheKey, signedUrl);
+        return signedUrl;
+      } catch (err) {
+        console.warn('[imageUtils] Failed to sign public URL, trying as-is:', err);
+        return rawUrl; // Fallback: maybe bucket IS public
+      }
+    }
+  }
+
+  // Case 4: External URL → return as-is
   return rawUrl;
 }
 

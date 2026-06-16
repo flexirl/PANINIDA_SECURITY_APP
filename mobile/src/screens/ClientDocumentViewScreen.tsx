@@ -11,13 +11,15 @@ import {
   Modal,
   Image,
   Dimensions,
-  Linking
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getClientDocuments, getClientWorkforceRoster } from '../api/clientPortalService';
+import ClientTopNav from '../components/ClientTopNav';
+import ClientBottomNav from '../components/ClientBottomNav';
+import { resolveImageUrl } from '../utils/imageUtils';
 import type { WorkforcePersonnel, WorkforceDocument } from '../types/workforce';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -27,8 +29,8 @@ const PERMITTED_DOC_TYPES = [
   { type: 'aadhaar_back', name: 'Aadhaar Back / आधार बैक' },
   { type: 'pan', name: 'PAN Card / पैन कार्ड' },
   { type: 'police_verification', name: 'Police Verification / पुलिस सत्यापन' },
-  { type: 'security_training_certificate', name: 'Security Training Certificate / सुरक्षा प्रशिक्षण प्रमाण पत्र' },
-  { type: 'weapon_training_certificate', name: 'Weapon Training Certificate / हथियार प्रशिक्षण प्रमाण पत्र' },
+  { type: 'security_training', name: 'Security Training Certificate / सुरक्षा प्रशिक्षण प्रमाण पत्र' },
+  { type: 'weapon_training', name: 'Weapon Training Certificate / हथियार प्रशिक्षण प्रमाण पत्र' },
   { type: 'gun_license', name: 'Gun License / गन लाइसेंस' },
   { type: 'ex_servicemen_proof', name: 'Ex-Servicemen Proof / पूर्व सैनिक प्रमाण' }
 ];
@@ -48,6 +50,7 @@ export default function ClientDocumentViewScreen({ route, navigation }: any) {
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerTitle, setViewerTitle] = useState('');
+  const [viewerLoading, setViewerLoading] = useState(false);
 
   const loadPersonnel = async () => {
     try {
@@ -94,17 +97,21 @@ export default function ClientDocumentViewScreen({ route, navigation }: any) {
     }
   };
 
-  const handleOpenDoc = (doc: WorkforceDocument, typeName: string) => {
-    // If it's a PDF, open via Linking, else open inside our image viewer modal
+  const handleOpenDoc = async (doc: WorkforceDocument, typeName: string) => {
+    // Always show documents in-app via the modal viewer
     const url = doc.file_url;
-    if (url.toLowerCase().endsWith('.pdf')) {
-      Linking.openURL(url).catch(() => {
-        Alert.alert('Error', 'Unable to open PDF link');
-      });
-    } else {
-      setViewerTitle(typeName);
+    setViewerTitle(typeName);
+    setViewerLoading(true);
+    setViewerVisible(true);
+    try {
+      // Resolve storage:// paths and expired signed URLs to viewable URLs
+      const resolvedUrl = await resolveImageUrl(url);
+      setViewerUrl(resolvedUrl || url);
+    } catch (err) {
+      console.error('Failed to resolve document URL:', err);
       setViewerUrl(url);
-      setViewerVisible(true);
+    } finally {
+      setViewerLoading(false);
     }
   };
 
@@ -170,28 +177,23 @@ export default function ClientDocumentViewScreen({ route, navigation }: any) {
   };
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 16) }]}>
-      {/* Header */}
-      <View style={s.header}>
+    <View style={[s.container]}>
+      {/* Top App Bar */}
+      <ClientTopNav showBack />
+
+      {/* Screen Title */}
+      <View style={s.pageHeader}>
         {selectedPersonnel ? (
           <TouchableOpacity
             onPress={() => setSelectedPersonnel(null)}
-            style={s.backButton}
+            style={s.pageBackButton}
           >
-            <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+            <MaterialIcons name="arrow-back" size={20} color={Colors.primary} />
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={s.backButton}
-          >
-            <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-          </TouchableOpacity>
-        )}
-        <Text style={s.headerTitle} numberOfLines={1}>
+        ) : null}
+        <Text style={s.pageTitle} numberOfLines={1}>
           {selectedPersonnel ? `Docs: ${selectedPersonnel.name}` : 'Verification Documents'}
         </Text>
-        <View style={s.placeholder} />
       </View>
 
       {/* Main Content Area */}
@@ -258,31 +260,49 @@ export default function ClientDocumentViewScreen({ route, navigation }: any) {
         </View>
       )}
 
-      {/* Image Viewer Modal */}
+      {/* ═══ Bottom Navigation ═══ */}
+      <ClientBottomNav activeTab="more" />
+
+      {/* Document Viewer Modal */}
       <Modal
         visible={viewerVisible}
         transparent={true}
-        onRequestClose={() => setViewerVisible(false)}
+        onRequestClose={() => { setViewerVisible(false); setViewerUrl(''); }}
         animationType="fade"
       >
         <View style={s.modalOverlay}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle} numberOfLines={1}>{viewerTitle}</Text>
             <TouchableOpacity
-              onPress={() => setViewerVisible(false)}
+              onPress={() => { setViewerVisible(false); setViewerUrl(''); }}
               style={s.closeButton}
             >
               <MaterialIcons name="close" size={24} color="#ffffff" />
             </TouchableOpacity>
           </View>
           <View style={s.imageContainer}>
-            {viewerUrl ? (
+            {viewerLoading ? (
+              <View style={{ alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#ffffff" />
+                <Text style={{ color: 'rgba(255,255,255,0.7)', marginTop: 12, fontSize: 14 }}>Loading document...</Text>
+              </View>
+            ) : viewerUrl ? (
               <Image
                 source={{ uri: viewerUrl }}
                 style={s.viewerImage}
                 resizeMode="contain"
+                onError={() => {
+                  Alert.alert('Error', 'Unable to load this document. The file may not be available.');
+                  setViewerVisible(false);
+                  setViewerUrl('');
+                }}
               />
-            ) : null}
+            ) : (
+              <View style={{ alignItems: 'center' }}>
+                <MaterialIcons name="broken-image" size={64} color="rgba(255,255,255,0.4)" />
+                <Text style={{ color: 'rgba(255,255,255,0.6)', marginTop: 12, fontSize: 14 }}>Document not available</Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -295,27 +315,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: Spacing.screenPadding,
     paddingVertical: 12,
   },
-  backButton: {
-    padding: 8,
+  pageBackButton: {
+    padding: 6,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.surfaceContainerLow,
+    marginRight: 10,
   },
-  placeholder: {
-    width: 40,
-  },
-  headerTitle: {
-    ...Typography.h2,
+  pageTitle: {
+    ...Typography.h3,
     color: Colors.onBackground,
     flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 8,
   },
   searchSection: {
     paddingHorizontal: Spacing.screenPadding,

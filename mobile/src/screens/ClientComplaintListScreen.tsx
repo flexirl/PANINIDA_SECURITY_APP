@@ -14,6 +14,8 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getComplaintsForSite } from '../api/complaintService';
 import { supabase } from '../api/supabase';
+import ClientTopNav from '../components/ClientTopNav';
+import ClientBottomNav from '../components/ClientBottomNav';
 import type { Complaint, ComplaintStatus } from '../types/workforce';
 
 interface ClientComplaintListScreenProps {
@@ -122,7 +124,7 @@ export default function ClientComplaintListScreen({ navigation }: ClientComplain
       <TouchableOpacity
         activeOpacity={0.75}
         style={s.card}
-        onPress={() => navigation.navigate('ComplaintDetail', { complaintId: item.id })}
+        onPress={() => navigation.navigate('ClientComplaintDetail', { complaintId: item.id })}
       >
         <View style={s.cardHeader}>
           <Text style={s.categoryName}>{item.category}</Text>
@@ -158,24 +160,27 @@ export default function ClientComplaintListScreen({ navigation }: ClientComplain
   };
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 16) }]}>
-      {/* Header */}
-      <View style={s.header}>
+    <View style={[s.container]}>
+      {/* Top App Bar */}
+      <ClientTopNav showBack />
+
+      {/* Screen Title & Actions */}
+      <View style={s.pageHeader}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={s.backButton}
+          style={s.pageBackButton}
           accessibilityLabel="Go back"
         >
-          <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+          <MaterialIcons name="arrow-back" size={20} color={Colors.primary} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Complaints</Text>
+        <Text style={s.pageTitle}>Complaints</Text>
         <TouchableOpacity
-          onPress={() => siteId && navigation.navigate('RaiseComplaint', { siteId })}
+          onPress={() => siteId && navigation.navigate('ClientRaiseComplaint', { siteId })}
           style={s.addButton}
           disabled={!siteId}
           accessibilityLabel="File a complaint"
         >
-          <MaterialIcons name="add" size={24} color={Colors.primary} />
+          <MaterialIcons name="add" size={20} color={Colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -209,10 +214,13 @@ export default function ClientComplaintListScreen({ navigation }: ClientComplain
           data={filteredComplaints}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
+          contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 16) + 100 }]}
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* ═══ Bottom Navigation ═══ */}
+      <ClientBottomNav activeTab="more" />
     </View>
   );
 }
@@ -222,26 +230,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.screenPadding,
     paddingVertical: 12,
   },
-  backButton: {
-    padding: 8,
+  pageBackButton: {
+    padding: 6,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.surfaceContainerLow,
+    marginRight: 10,
   },
   addButton: {
-    padding: 8,
+    padding: 6,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.surfaceContainerLow,
   },
-  headerTitle: {
-    ...Typography.h2,
+  pageTitle: {
+    ...Typography.h3,
     color: Colors.onBackground,
+    flex: 1,
   },
   tabContainer: {
     flexDirection: 'row',

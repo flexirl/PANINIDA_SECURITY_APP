@@ -18,6 +18,8 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { getClientWorkforceRoster, getClientSiteInfo } from '../api/clientPortalService';
 import CategoryBadge from '../components/CategoryBadge';
 import AttendanceStatusBadge from '../components/AttendanceStatusBadge';
+import ClientTopNav from '../components/ClientTopNav';
+import ClientBottomNav from '../components/ClientBottomNav';
 import type { WorkforcePersonnel, ShiftType } from '../types/workforce';
 
 export default function ClientWorkforceRosterScreen({ navigation }: any) {
@@ -76,7 +78,11 @@ export default function ClientWorkforceRosterScreen({ navigation }: any) {
 
   const renderRosterItem = ({ item }: { item: WorkforcePersonnel & { shift_type?: ShiftType; assignment_id: string } }) => {
     return (
-      <View style={s.rosterCard}>
+      <TouchableOpacity 
+        style={s.rosterCard}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('ClientStaffDetail', { personnel: item })}
+      >
         <View style={s.rosterRow}>
           <View style={s.rosterMainInfo}>
             <Text style={s.rosterName}>{item.name}</Text>
@@ -94,27 +100,14 @@ export default function ClientWorkforceRosterScreen({ navigation }: any) {
             <AttendanceStatusBadge status={item.today_attendance?.status} size="sm" />
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 16) }]}>
+    <View style={[s.container]}>
       {/* Header */}
-      <View style={s.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={s.backButton}
-          accessibilityLabel="Go back"
-        >
-          <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-        </TouchableOpacity>
-        <View style={s.titleContainer}>
-          <Text style={s.headerTitle}>Workforce Roster</Text>
-          <Text style={s.siteSub}>{siteName || 'Loading location...'}</Text>
-        </View>
-        <View style={s.placeholder} />
-      </View>
+      <ClientTopNav showBack />
 
       {/* Search bar inside Roster */}
       <View style={s.searchSection}>
@@ -145,7 +138,7 @@ export default function ClientWorkforceRosterScreen({ navigation }: any) {
               <CategoryBadge categoryName={title} size="md" />
             </View>
           )}
-          contentContainerStyle={[s.listContainer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
+          contentContainerStyle={[s.listContainer, { paddingBottom: Math.max(insets.bottom, 16) + 100 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
@@ -156,6 +149,9 @@ export default function ClientWorkforceRosterScreen({ navigation }: any) {
           }
         />
       )}
+
+      {/* ═══ Bottom Navigation ═══ */}
+      <ClientBottomNav activeTab="roster" />
     </View>
   );
 }
@@ -164,21 +160,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.screenPadding,
-    paddingVertical: 12,
-  },
-  backButton: {
-    padding: 8,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.surfaceContainerLow,
-  },
-  placeholder: {
-    width: 40,
   },
   titleContainer: {
     alignItems: 'center',

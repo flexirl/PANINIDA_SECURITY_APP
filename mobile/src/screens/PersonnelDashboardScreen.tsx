@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../api/supabase';
 import * as siteService from '../api/siteService';
@@ -172,12 +173,33 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       }
 
       // 2. Current site assignment
-      if (currentUser?.current_assignment?.site_id) {
-        try {
-          const site = await siteService.getSiteDetail(currentUser.current_assignment.site_id);
+      try {
+        // Query the active assignment directly to ensure we have the latest
+        const { data: assignment } = await supabase
+          .from('site_assignments')
+          .select('site_id')
+          .eq('personnel_id', currentPersonnelId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        const activeSiteId = assignment?.site_id || currentUser?.current_assignment?.site_id;
+        
+        if (activeSiteId) {
+          const site = await siteService.getSiteDetail(activeSiteId);
           setSiteDetails(site);
-        } catch {
-          // Site might not exist
+        } else {
+          setSiteDetails(null);
+        }
+      } catch (err) {
+        console.warn('Could not fetch site assignment:', err);
+        // Fallback to user profile assignment if direct query fails
+        if (currentUser?.current_assignment?.site_id) {
+          try {
+            const site = await siteService.getSiteDetail(currentUser.current_assignment.site_id);
+            setSiteDetails(site);
+          } catch {}
         }
       }
 
@@ -279,9 +301,11 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -467,23 +491,6 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             </Text>
           </View>
 
-          {/* Absent */}
-          <View style={s.statCard}>
-            <View style={s.statCardHeader}>
-              <View style={[s.statIconContainer, { backgroundColor: 'rgba(231, 76, 60, 0.06)' }]}>
-                <MaterialIcons name="event-busy" size={20} color={Colors.dangerRed} />
-              </View>
-            </View>
-            <Text style={s.statLabel}>ABSENT</Text>
-            <Text style={s.statSubLabel}>अनुपस्थित</Text>
-            <Text style={[s.statValue, attendanceStats.absent > 0 && { color: Colors.dangerRed }]}>
-              {attendanceStats.absent}
-              <Text style={s.statValueSlash}> days / दिन</Text>
-            </Text>
-          </View>
-        </View>
-
-        <View style={s.statsRow}>
           {/* Earnings */}
           <View style={s.statCard}>
             <View style={s.statCardHeader}>
@@ -500,22 +507,25 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               महीने के अंत में उपलब्ध होगा
             </Text>
           </View>
-
-          {/* Documents */}
-          <View style={s.statCard}>
-            <View style={s.statCardHeader}>
-              <View style={[s.statIconContainer, { backgroundColor: 'rgba(41, 128, 185, 0.06)' }]}>
-                <MaterialIcons name="description" size={20} color={Colors.infoBlue} />
-              </View>
-            </View>
-            <Text style={s.statLabel}>DOCUMENTS</Text>
-            <Text style={s.statSubLabel}>दस्तावेज़</Text>
-            <Text style={s.statValue}>
-              {documentCount.verified}
-              <Text style={s.statValueSlash}>/{documentCount.total}</Text>
-            </Text>
-          </View>
         </View>
+
+        {/* ─── Visitor Log Banner ─── */}
+        <TouchableOpacity 
+          style={s.visitorLogBanner} 
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('GuardVisitorLog')}
+        >
+          <View style={s.visitorLogBannerLeft}>
+            <View style={[s.statIconContainer, { backgroundColor: 'rgba(46, 125, 50, 0.1)' }]}>
+              <MaterialIcons name="groups" size={24} color="#2E7D32" />
+            </View>
+            <View style={{ marginLeft: 14 }}>
+              <Text style={s.visitorLogBannerTitle}>Visitor Log</Text>
+              <Text style={s.visitorLogBannerSub}>आगंतुक लॉग प्रबंधित करें</Text>
+            </View>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={Colors.outlineVariant} />
+        </TouchableOpacity>
 
         {/* ─── Quick Actions ─── */}
         <View style={s.quickActionsSection}>
@@ -559,7 +569,8 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               <Text style={s.quickActionLabel}>Documents</Text>
               <Text style={s.quickActionLabelHindi}>दस्तावेज़</Text>
             </TouchableOpacity>
-
+          </View>
+          <View style={[s.quickActionsRow, { marginTop: 12 }]}>
             <TouchableOpacity
               style={s.quickActionItem}
               activeOpacity={0.7}
@@ -571,6 +582,20 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
               <Text style={s.quickActionLabel}>My Profile</Text>
               <Text style={s.quickActionLabelHindi}>मेरी प्रोफ़ाइल</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.quickActionItem}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('GuardVisitorLog')}
+            >
+              <View style={[s.quickActionIcon, { backgroundColor: '#E8F5E9' }]}>
+                <MaterialIcons name="groups" size={24} color="#2E7D32" />
+              </View>
+              <Text style={s.quickActionLabel}>Visitor Log</Text>
+              <Text style={s.quickActionLabelHindi}>आगंतुक लॉग</Text>
+            </TouchableOpacity>
+            
+            <View style={{ flex: 1 }} />
           </View>
         </View>
 
@@ -996,6 +1021,40 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
     marginTop: 2,
     lineHeight: 14,
+  },
+
+  // ── Visitor Log Banner ──
+  visitorLogBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(195, 198, 208, 0.5)',
+    borderRadius: BorderRadius.xl,
+    padding: 16,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  visitorLogBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  visitorLogBannerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+    fontFamily: 'Manrope',
+  },
+  visitorLogBannerSub: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.outline,
+    fontFamily: 'Inter',
+    marginTop: 2,
   },
 
   // ── Quick Actions ──
