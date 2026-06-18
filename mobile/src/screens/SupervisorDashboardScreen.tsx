@@ -19,6 +19,7 @@ import { getSiteDashboardMetrics } from '../api/siteAssignmentService';
 import { getComplaintsForSite } from '../api/complaintService';
 import { signOut } from '../api/authService';
 import SiteSummaryCard from '../components/SiteSummaryCard';
+import LogoutModal from '../components/LogoutModal';
 import type { Site } from '../types/workforce';
 
 export default function SupervisorDashboardScreen({ navigation }: any) {
@@ -31,6 +32,7 @@ export default function SupervisorDashboardScreen({ navigation }: any) {
   const [supervisorName, setSupervisorName] = useState('');
   const [sitesList, setSitesList] = useState<any[]>([]);
   const [allPersonnelData, setAllPersonnelData] = useState<any[]>([]); // Cache all personnel for filtering
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   const loadData = async (isRefreshing = false) => {
     try {
@@ -155,7 +157,12 @@ export default function SupervisorDashboardScreen({ navigation }: any) {
     loadData(true);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
     try {
       await signOut();
       navigation.replace('Login');
@@ -296,6 +303,12 @@ export default function SupervisorDashboardScreen({ navigation }: any) {
           ))
         )}
       </ScrollView>
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }

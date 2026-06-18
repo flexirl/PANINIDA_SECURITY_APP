@@ -227,7 +227,7 @@ export default function OtpScreen({ navigation, route }: OtpScreenProps) {
         } else if (userProfile?.role === 'client_user') {
           navigation.replace('ClientPortalHome');
         } else if (userProfile?.role === 'inspector') {
-          navigation.replace('InspectionList');
+          navigation.replace('InspectorDashboard');
         } else if (userProfile?.role === 'workforce_personnel' || userProfile?.role === 'guard') {
           navigation.replace('PersonnelDashboard');
         } else {
@@ -316,7 +316,7 @@ export default function OtpScreen({ navigation, route }: OtpScreenProps) {
       >
         <TouchableWithoutFeedback onPress={dismissKeyboard}>
           <View style={s.innerContainer}>
-            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+            <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
             <View style={s.content}>
           {/* Shield Icon */}

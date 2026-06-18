@@ -13,6 +13,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,6 +24,7 @@ import * as workforcePersonnelService from '../api/workforcePersonnelService';
 import * as siteAssignmentService from '../api/siteAssignmentService';
 import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
+import SuccessModal from '../components/SuccessModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -60,6 +62,11 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
 
   const [availableCount, setAvailableCount] = useState(0);
   const [deployedCount, setDeployedCount] = useState(0);
+
+  // Success Modal State
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [assignedPersonName, setAssignedPersonName] = useState('');
+  const [assignedSiteName, setAssignedSiteName] = useState('');
 
   // Animations
   const saveBtnScale = useRef(new Animated.Value(1)).current;
@@ -212,16 +219,10 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
                 shift_type: selectedShift,
               });
 
-              Alert.alert(
-                'Success',
-                `✅ ${selectedPerson.name} successfully assigned to ${selectedSite.site_name}.`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => navigation.goBack(),
-                  },
-                ]
-              );
+              setLoading(false);
+              setAssignedPersonName(selectedPerson.name);
+              setAssignedSiteName(selectedSite.site_name);
+              setSuccessModalVisible(true);
             } catch (err: any) {
               setLoading(false);
               Alert.alert('Assignment Failed', err.message || 'Unable to complete shift assignment.');
@@ -256,7 +257,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
   if (loading) {
     return (
       <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.outline, fontWeight: '600', fontSize: 14 }}>
           Loading personnel roster...
@@ -267,7 +268,7 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -602,6 +603,21 @@ export default function AssignGuardScreen({ navigation, route }: AssignGuardScre
           </Animated.View>
         </View>
       )}
+
+      {/* ═══ Success Modal ═══ */}
+      <SuccessModal
+        visible={successModalVisible}
+        title="Task Completed"
+        description={
+          <>
+            <Text style={s.boldText}>{assignedPersonName}</Text> successfully assigned to <Text style={s.boldText}>{assignedSiteName}</Text>.
+          </>
+        }
+        onClose={() => {
+          setSuccessModalVisible(false);
+          navigation.goBack();
+        }}
+      />
     </View>
   );
 }
@@ -1111,5 +1127,9 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 14,
     color: Colors.outline,
+  },
+  boldText: {
+    fontWeight: '700',
+    color: '#1F2937',
   },
 });

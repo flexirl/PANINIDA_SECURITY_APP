@@ -25,6 +25,7 @@ import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
 import { useFileUpload } from '../hooks/useFileUpload';
 import CachedImage from '../components/CachedImage';
+import LogoutModal from '../components/LogoutModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,6 +42,7 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const { upload } = useFileUpload();
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   // Status pulse animation
   const pulseAnim = useRef(new Animated.Value(0.5)).current;
@@ -243,29 +245,21 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
     Linking.openURL(`tel:${phone}`);
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Logout / लॉगआउट',
-      'Are you sure you want to log out?\nक्या आप लॉग आउट करना चाहते हैं?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOutUser();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
-            } catch (err) {
-              console.error('Logout error:', err);
-            }
-          },
-        },
-      ]
-    );
+  const handleLogout = () => {
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
+    try {
+      await signOutUser();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
   const navItems = [
@@ -318,7 +312,7 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top AppBar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -673,6 +667,12 @@ export default function GuardProfileScreen({ navigation }: { navigation: any }) 
           );
         })}
       </View>
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }

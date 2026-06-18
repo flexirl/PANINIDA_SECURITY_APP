@@ -13,10 +13,15 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
+import { useAuth } from '../hooks/useAuth';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import Skeleton from '../components/Skeleton';
 import * as inspectionService from '../api/inspectionService';
+import SuccessModal from '../components/SuccessModal';
+
+const LOGO_URL =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCQ1nR-azIGzwp04pulq6olrkEqAb1txijCpWpJdEUL2C84FKePxt77NS2Hn8UW9CsJPJkugrwhCY6hePFIXW5_Q-QVNBBn6MSXo1B9u6ZMjgAnSg1-NwcAR3o20ChzVMO1HVOKhcVesFsHMQxMqurEaMg2eAFs-TIcUJxxzrPgLm7OrFQ8uN_8-yGhkIuWrlny29UxzziSSj3K0H6JbXJHHXny9-KXM9ND_lQa4gSHSofs__S_66Zm6OCpDjMEmLi4lUm05ExxfXc';
 
 interface InspectionReport {
   id: string;
@@ -48,6 +53,9 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const fetchDetail = useCallback(async () => {
     if (!reportId) {
@@ -88,17 +96,14 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
         timestamp: `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} \u2022 ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
         inspectorName: r.inspector?.name || 'Unknown',
         gps: r.latitude && r.longitude ? `${r.latitude}, ${r.longitude}` : 'N/A',
-        presentGuardsCount: presentNames.length,
-        absentGuardsCount: absentNames.length,
-        presentGuards: presentNames,
-        absentGuards: absentNames,
+        presentGuardsCount: 0,
+        absentGuardsCount: 0,
+        presentGuards: [],
+        absentGuards: [],
         status: 'Completed',
-        incidentLevel: r.incident_reported ? (r.incident_severity === 'high' || r.incident_severity === 'critical' ? 'high' : 'minor') : 'none',
-        remarks: r.remarks || '',
-        incidentDesc: r.incident_description,
-        incidentPhotos,
+        incidentLevel: 'none',
+        remarks: r.remarks || 'No remarks provided',
         inspectionPhotos,
-        mapImage,
       });
     } catch (err: any) {
       console.error('Failed to fetch inspection detail:', err);
@@ -115,7 +120,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
   if (loading) {
     return (
       <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
         {/* TopAppBar Skeleton */}
         <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -171,30 +176,6 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
             </View>
           </View>
 
-          {/* Guard Verification Section Skeleton */}
-          <View style={s.guardsRosterRow}>
-            <View style={[s.guardPanel, s.panelPresent]}>
-              <View style={[s.panelHeader, { gap: 6 }]}>
-                <MaterialIcons name="check-circle" size={18} color={Colors.successGreen} />
-                <Skeleton width="50%" height={14} />
-              </View>
-              <View style={[s.guardsListContainer, { gap: 8 }]}>
-                <Skeleton width="90%" height={30} borderRadius={8} />
-                <Skeleton width="80%" height={30} borderRadius={8} />
-              </View>
-            </View>
-
-            <View style={[s.guardPanel, s.panelAbsent]}>
-              <View style={[s.panelHeader, { gap: 6 }]}>
-                <MaterialIcons name="cancel" size={18} color={Colors.error} />
-                <Skeleton width="50%" height={14} />
-              </View>
-              <View style={[s.guardsListContainer, { gap: 8 }]}>
-                <Skeleton width="85%" height={30} borderRadius={8} />
-              </View>
-            </View>
-          </View>
-
           {/* Remarks Section Skeleton */}
           <View style={s.remarksSection}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -229,11 +210,15 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
   }
 
   const handleExport = () => {
-    Alert.alert('Success', `Report ${report.id} has been exported to PDF successfully.`);
+    setSuccessMessage(`Report ${report.id} has been exported to PDF successfully.`);
+    setOnSuccessClose(() => () => {});
+    setShowSuccessModal(true);
   };
 
   const handleFlagReview = () => {
-    Alert.alert('Flagged for Review', `Report ${report.id} has been flagged for senior operations review.`);
+    setSuccessMessage(`Report ${report.id} has been flagged for senior operations review.`);
+    setOnSuccessClose(() => () => {});
+    setShowSuccessModal(true);
   };
 
   const handleAddPhotoMock = () => {
@@ -261,7 +246,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* ═══ TopAppBar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -283,10 +268,11 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
             <TouchableOpacity activeOpacity={0.7} style={s.topBarIconBtn} onPress={() => navigation.navigate('NotificationCenter')}>
               <MaterialIcons name="notifications" size={24} color={Colors.onPrimary} />
             </TouchableOpacity>
-            <View style={s.avatarSmall}>
+            <View style={[s.avatarSmall, { backgroundColor: 'transparent', borderWidth: 0 }]}>
               <Image
-                source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDHToGvAcAzfgSk1nF58VzNZg0AoBcMWoSrVr7oKGVh88qf9Y8DVCXPeEWR_Rx86pXqgt9KoAQdg2uRi_RQF_cD98AucN0o4hA6AGiB6dfGVvkRECwa09mmg3exCDpw1U1aZ2bw8NIvbM2KqxGHCbdjNvaYUdTVtz18pBlYv8kI2NMA6oUEU3EUIynWdac-RG0xdPZCk7v02f5wfNByHgME5MwmCrEw51gjeRjMauzzFK_GB0pu5sr0tduwsQMqs5hlFR-Dw00OnaI' }}
-                style={s.avatarSmallImage as any}
+                source={{ uri: LOGO_URL }}
+                style={{ width: 32, height: 32 }}
+                resizeMode="contain"
               />
             </View>
           </View>
@@ -342,112 +328,21 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
           </View>
         </View>
 
-        {/* ═══ Guard Verification Section ═══ */}
-        <View style={s.guardsRosterRow}>
-          {/* Present Panel */}
-          <View style={[s.guardPanel, s.panelPresent]}>
-            <View style={s.panelHeader}>
-              <MaterialIcons name="check-circle" size={18} color={Colors.successGreen} />
-              <Text style={s.panelTitle}>Guards Present ({report.presentGuardsCount})</Text>
-            </View>
-            <View style={s.guardsListContainer}>
-              {report.presentGuards.map((name, index) => (
-                <View key={index} style={s.guardBadgePresent}>
-                  <Text style={s.guardNamePresent}>{name}</Text>
-                  <MaterialIcons name="verified" size={14} color={Colors.successGreen} />
-                </View>
-              ))}
-              {report.presentGuards.length === 0 && (
-                <Text style={s.emptyText}>No guards present.</Text>
-              )}
-            </View>
-          </View>
-
-          {/* Absent Panel */}
-          <View style={[s.guardPanel, s.panelAbsent]}>
-            <View style={s.panelHeader}>
-              <MaterialIcons name="cancel" size={18} color={Colors.error} />
-              <Text style={s.panelTitle}>Guards Absent ({report.absentGuardsCount})</Text>
-            </View>
-            <View style={s.guardsListContainer}>
-              {report.absentGuards.map((name, index) => (
-                <View key={index} style={s.guardBadgeAbsent}>
-                  <Text style={s.guardNameAbsent}>{name}</Text>
-                  <MaterialIcons name="close" size={14} color={Colors.error} />
-                </View>
-              ))}
-              {report.absentGuards.length === 0 && (
-                <Text style={s.emptyText}>No guards absent.</Text>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* ═══ Incident Details Card ═══ */}
-        {report.incidentLevel !== 'none' && (
-          <View style={s.incidentCard}>
-            {/* Watermark Logo */}
-            <View style={s.watermarkContainer}>
-              <MaterialIcons name="report-problem" size={120} color="rgba(186,26,26,0.06)" />
-            </View>
-
-            <View style={s.incidentCardHeader}>
-              <View style={[
-                s.severityBadge,
-                report.incidentLevel !== 'high' && { backgroundColor: Colors.warningAmber }
-              ]}>
-                <Text style={s.severityBadgeText}>
-                  {report.incidentLevel === 'high' ? 'High Severity' : 'Minor Severity'}
-                </Text>
-              </View>
-              <Text style={s.incidentTitle}>Unauthorized Entry Incident</Text>
-            </View>
-
-            <Text style={s.incidentDesc}>{report.incidentDesc}</Text>
-
-            {/* Horizontal gallery for incident photos */}
-            {report.incidentPhotos && report.incidentPhotos.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={s.incidentPhotosScroll}
-                contentContainerStyle={s.incidentPhotosContent}
-              >
-                {report.incidentPhotos.map((url, index) => (
-                  <TouchableOpacity key={index} activeOpacity={0.9}>
-                    <Image
-                      source={{ uri: url }}
-                      style={s.incidentPhoto as any}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        )}
-
         {/* ═══ Inspection Photos Gallery ═══ */}
         <View style={s.photosSection}>
           <Text style={s.sectionHeader}>
             <MaterialIcons name="photo-library" size={18} color={Colors.primary} />
-            {'  '}Inspection Photos
+            {'  '}Inspection Photo
           </Text>
           <View style={s.photosGrid}>
-            {report.inspectionPhotos && report.inspectionPhotos.map((url, index) => (
+            {report.inspectionPhotos && report.inspectionPhotos.length > 0 ? (
               <Image
-                key={index}
-                source={{ uri: url }}
+                source={{ uri: report.inspectionPhotos[0] }}
                 style={s.gridImage as any}
               />
-            ))}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={s.addPhotoCell}
-              onPress={handleAddPhotoMock}
-            >
-              <MaterialIcons name="add-a-photo" size={24} color={Colors.onSurfaceVariant} />
-              <Text style={s.addPhotoText}>+12 More</Text>
-            </TouchableOpacity>
+            ) : (
+              <Text style={{ color: Colors.outline }}>No photo uploaded</Text>
+            )}
           </View>
         </View>
 
@@ -460,43 +355,7 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
           <View style={s.remarksTextContainer}>
             <Text style={s.remarksText}>"{report.remarks}"</Text>
           </View>
-
-          {/* Action Buttons */}
-          <View style={s.actionRow}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={s.exportBtn}
-              onPress={handleExport}
-            >
-              <MaterialIcons name="download" size={20} color={Colors.onPrimary} />
-              <Text style={s.exportBtnText}>Export Report</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={s.flagBtn}
-              onPress={handleFlagReview}
-            >
-              <MaterialIcons name="warning" size={18} color={Colors.secondary} />
-              <Text style={s.flagBtnText}>Flag for Review</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-
-        {/* ═══ Map Section ═══ */}
-        {report.mapImage && (
-          <View style={s.mapContainer}>
-            <Image
-              source={{ uri: report.mapImage }}
-              style={s.mapImage as any}
-            />
-            {/* Map Overlay and Pin */}
-            <View style={s.mapOverlay} />
-            <View style={s.mapPinContainer}>
-              <MaterialIcons name="location-on" size={44} color={Colors.error} />
-            </View>
-          </View>
-        )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -524,6 +383,12 @@ export default function InspectionDetailScreen({ route, navigation }: { route: a
           );
         })}
       </View>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }
@@ -834,8 +699,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   gridImage: {
-    width: '48%',
-    height: 100,
+    width: '100%',
+    height: 200,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.surfaceContainer,
   },

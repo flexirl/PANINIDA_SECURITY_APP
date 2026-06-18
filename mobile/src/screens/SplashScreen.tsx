@@ -155,7 +155,7 @@ export default function SplashScreen({ navigation }: SplashScreenProps) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primaryContainer} />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* Background */}
       <View style={StyleSheet.absoluteFillObject}>

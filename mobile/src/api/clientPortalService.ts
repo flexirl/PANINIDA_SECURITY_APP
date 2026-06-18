@@ -236,7 +236,7 @@ export async function getClientDocuments(personnelId: string): Promise<Workforce
   const permittedTypes = [
     'aadhaar_front',
     'aadhaar_back',
-    'aadhaar',              // guard module uploads Aadhaar as single type
+    'aadhaar',              // guard module may still have legacy 'aadhaar' type
     'pan',
     'address_proof',        // guard module maps PAN Card to 'address_proof'
     'police_verification',
@@ -272,16 +272,17 @@ export async function getClientDocuments(personnelId: string): Promise<Workforce
     console.warn('guard_documents query skipped:', err);
   }
 
-  let aadhaarCount = 0;
-
   // Helper function to map document_type to separate front/back for aadhaar
   const mapAndFormatDocs = (docs: any[], isGuardDoc: boolean): WorkforceDocument[] => {
+    // Track aadhaar count per document source (reset for each source)
+    let aadhaarCount = 0;
+
     return docs
       .filter((d: any) => permittedTypes.includes(d.document_type))
       .map((d: any) => {
         let docType = d.document_type;
 
-        // Distinguish between Aadhaar Front and Back
+        // Distinguish between Aadhaar Front and Back for legacy 'aadhaar' type
         if (docType === 'aadhaar') {
           const nameOrUrl = ((d.document_name || '') + ' ' + (d.document_url || d.file_url || '')).toLowerCase();
           if (nameOrUrl.includes('back')) {
@@ -291,8 +292,8 @@ export async function getClientDocuments(personnelId: string): Promise<Workforce
           } else {
             // Fallback if keywords aren't present: first is front, second is back
             docType = aadhaarCount === 0 ? 'aadhaar_front' : 'aadhaar_back';
-            aadhaarCount++;
           }
+          aadhaarCount++;
         }
 
         return {

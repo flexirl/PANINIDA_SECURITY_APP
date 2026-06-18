@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
       if (!file) {
         return errorResponse("File is required");
       }
-      if (!documentType || !["aadhaar", "pan", "photo", "police_verification", "address_proof", "other"].includes(documentType)) {
+      if (!documentType || !["aadhaar", "aadhaar_front", "aadhaar_back", "pan", "photo", "police_verification", "address_proof", "other"].includes(documentType)) {
         return errorResponse("Valid document_type is required");
       }
 

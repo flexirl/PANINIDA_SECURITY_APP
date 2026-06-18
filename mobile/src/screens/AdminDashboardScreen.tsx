@@ -26,6 +26,7 @@ import * as dashboardService from '../api/dashboardService';
 import * as attendanceService from '../api/attendanceService';
 import * as notificationService from '../api/notificationService';
 import { supabase } from '../api/supabase';
+import NotificationBell from '../components/NotificationBell';
 import { hasModuleAccess } from '../api/managerPermissionsService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -83,6 +84,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
   // Cache for frontend recalculation (capped at 1000 personnel, 500 attendance/day)
   const [cachedPersonnel, setCachedPersonnel] = useState<any[]>([]);
   const [cachedAttendance, setCachedAttendance] = useState<any[]>([]);
+  const [cachedAssignments, setCachedAssignments] = useState<any[]>([]);
   const [dataFullyCached, setDataFullyCached] = useState(false);
   const [baseOverview, setBaseOverview] = useState<dashboardService.DashboardOverview | null>(null);
   const [cachedPayroll, setCachedPayroll] = useState<any[]>([]);
@@ -125,6 +127,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
     attendanceRecords: any[],
     personnelRecords: any[],
     payrollRecords: any[],
+    assignmentRecords: any[],
     filterIds: string[]
   ) => {
     // If no filter (all personnel), return base overview
@@ -137,6 +140,13 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
     const totalFiltered = filteredPersonnel.length;
     const activeFiltered = filteredPersonnel.filter((p: any) => p.employment_status === 'active').length;
 
+    // Filter assignments by category and attendance requirement
+    const filteredAssignments = assignmentRecords.filter((a: any) => {
+      const categoryId = a.personnel?.category_id;
+      return filterIds.includes(categoryId) && a.personnel?.category?.attendance_required === true;
+    });
+    const assignedCount = filteredAssignments.length;
+
     // Filter attendance records by category
     const filteredAttendance = attendanceRecords.filter((record: any) => {
       const categoryId = record.guards?.category_id || record.personnel?.category_id;
@@ -145,7 +155,9 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
 
     const present = filteredAttendance.filter((r: any) => r.status === 'present' || r.status === 'present_late').length;
     const late = filteredAttendance.filter((r: any) => r.status === 'late' || r.status === 'present_late').length;
-    const absent = filteredAttendance.filter((r: any) => r.status === 'absent').length;
+    
+    // Deduce absent dynamically
+    const absent = Math.max(0, assignedCount - present);
 
     // Filter payroll by category
     const filteredPayroll = payrollRecords.filter((p: any) => {
@@ -158,7 +170,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       guards: {
         total: totalFiltered,
         active: activeFiltered,
-        assigned: base.guards.assigned,
+        assigned: assignedCount,
       },
       today: { present, late, absent },
       payroll: { pending: filteredPayroll.length },
@@ -170,7 +182,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       const todayStr = getTodayDateString();
       
       // Fetch all data without category filter for caching (prefetch for all categories)
-      const [overviewData, allAttendanceRecords, unreadNotifications, personnelResult, payrollResult] = await Promise.all([
+      const [overviewData, allAttendanceRecords, unreadNotifications, personnelResult, payrollResult, assignmentResult] = await Promise.all([
         dashboardService.getDashboardOverview([]).catch(err => {
           console.warn('Overview API failed, using fallback metrics', err);
           return {
@@ -213,6 +225,18 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
             console.warn('Payroll cache fetch failed', err);
             return [] as any[];
           }),
+        Promise.resolve(
+          supabase
+            .from('site_assignments')
+            .select('id, personnel:workforce_personnel(category_id, category:workforce_categories(attendance_required))')
+            .eq('is_active', true)
+            .limit(1000)
+        )
+          .then(res => res.data || [])
+          .catch((err: any) => {
+            console.warn('Assignments cache fetch failed', err);
+            return [] as any[];
+          }),
       ]);
 
       // Cache the data for frontend recalculation (capped at 500 attendance records per day)
@@ -220,11 +244,12 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       setCachedAttendance(cappedAttendance);
       setCachedPersonnel(personnelResult);
       setCachedPayroll(payrollResult);
+      setCachedAssignments(assignmentResult);
       setBaseOverview(overviewData);
       setDataFullyCached(true);
       
       // Calculate filtered metrics based on categoryFilterIds
-      const filteredOverview = recalculateMetrics(overviewData, cappedAttendance, personnelResult, payrollResult, categoryFilterIds);
+      const filteredOverview = recalculateMetrics(overviewData, cappedAttendance, personnelResult, payrollResult, assignmentResult, categoryFilterIds);
       setOverview(filteredOverview);
       setUnreadCount(unreadNotifications.length);
 
@@ -344,7 +369,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       // Frontend recalculation completes within 100-200ms
       const startTime = performance.now();
       
-      const recalculated = recalculateMetrics(baseOverview, cachedAttendance, cachedPersonnel, cachedPayroll, categoryFilterIds);
+      const recalculated = recalculateMetrics(baseOverview, cachedAttendance, cachedPersonnel, cachedPayroll, cachedAssignments, categoryFilterIds);
       setOverview(recalculated);
       
       // Also filter activities
@@ -440,7 +465,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       const recalcTime = endTime - startTime;
       console.log(`Category filter recalculation completed in ${recalcTime.toFixed(2)}ms`);
     }
-  }, [categoryFilterIds, cachedAttendance, cachedPersonnel, cachedPayroll, baseOverview, dataFullyCached]);
+  }, [categoryFilterIds, cachedAttendance, cachedPersonnel, cachedPayroll, cachedAssignments, baseOverview, dataFullyCached]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -493,8 +518,8 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       {
         id: 'attendance',
         icon: 'how-to-reg',
-        value: overview ? String(overview.today.present) : '0',
-        subValue: overview ? `/${overview.guards.total}` : '/0',
+        value: baseOverview ? String(baseOverview.today.present) : '0',
+        subValue: baseOverview ? `/${baseOverview.today.present + baseOverview.today.absent}` : '/0',
         label: 'Present Today',
         permKey: 'workforce',
       },
@@ -515,7 +540,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
       });
     }
     return baseStats;
-  }, [overview, selectedCategory, getLabel, user?.role, user?.manager_permissions]);
+  }, [overview, baseOverview, selectedCategory, getLabel, user?.role, user?.manager_permissions]);
 
   const alertsList: AlertBanner[] = useMemo(() => {
     const list: AlertBanner[] = [];
@@ -559,11 +584,12 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
     return filteredList;
   }, [overview, getLabel, selectedCategory, user?.role, user?.manager_permissions]);
 
+  // Attendance Overview always shows ALL personnel (not filtered by category)
   const attendanceData = {
     present: baseOverview ? baseOverview.today.present : 0,
     late: baseOverview ? baseOverview.today.late : 0,
     absent: baseOverview ? baseOverview.today.absent : 0,
-    total: baseOverview ? baseOverview.guards.total : 0,
+    total: baseOverview ? baseOverview.today.present + baseOverview.today.absent : 0,
   };
   const attendanceTotal = attendanceData.total || 1; // Prevent NaN/division by zero
   const presentPct = (attendanceData.present / attendanceTotal) * 100;
@@ -635,7 +661,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
   if (loading && !refreshing) {
     return (
       <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.outline, fontWeight: '600', fontSize: 14 }}>
           Syncing with command center...
@@ -646,7 +672,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -659,14 +685,7 @@ export default function AdminDashboardScreen({ navigation }: AdminDashboardProps
           </View>
           <View style={s.topBarRight}>
             {/* Notification bell */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={s.topBarIconBtn}
-              onPress={() => navigation.navigate('NotificationCenter')}
-            >
-              <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
-              <View style={s.notifBadgeRedDot} />
-            </TouchableOpacity>
+            <NotificationBell color={Colors.primary} size={24} style={s.topBarIconBtn} />
              {/* Settings button */}
             {user?.role !== 'manager' && (
               <TouchableOpacity

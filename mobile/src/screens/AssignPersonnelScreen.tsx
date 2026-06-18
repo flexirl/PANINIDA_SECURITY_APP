@@ -19,6 +19,7 @@ import { assignPersonnelToSite } from '../api/siteAssignmentService';
 import { getSites } from '../api/siteService';
 import { supabase } from '../api/supabase';
 import CategoryBadge from '../components/CategoryBadge';
+import SuccessModal from '../components/SuccessModal';
 import type { WorkforcePersonnel, ShiftType } from '../types/workforce';
 
 interface AssignPersonnelScreenProps {
@@ -47,6 +48,9 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
   const [siteDropdownOpen, setSiteDropdownOpen] = useState(false);
   const [shiftType, setShiftType] = useState<ShiftType>('day');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   useEffect(() => {
     (async () => {
@@ -145,9 +149,9 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
               start_date: startDate
             });
 
-            Alert.alert('Success', `${selectedPersonnel.name} has been successfully deployed.`, [
-              { text: 'OK', onPress: () => navigation.goBack() }
-            ]);
+            setSuccessMessage(`${selectedPersonnel.name} has been successfully deployed.`);
+            setOnSuccessClose(() => () => navigation.goBack());
+            setShowSuccessModal(true);
           } catch (err: any) {
             Alert.alert('Error', err?.message || 'Failed to complete deployment.');
           } finally {
@@ -385,6 +389,12 @@ export default function AssignPersonnelScreen({ route, navigation }: AssignPerso
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

@@ -12,9 +12,9 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
-import { useScaledStyles } from '../context/FontSizeContext';
 import { getOperationsDashboardData, ManagedSiteDashboardData } from '../api/operationsService';
 import { signOut } from '../api/authService';
+import LogoutModal from '../components/LogoutModal';
 
 export default function OperationsDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -24,6 +24,7 @@ export default function OperationsDashboardScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [totalEscalated, setTotalEscalated] = useState(0);
   const [managedSites, setManagedSites] = useState<ManagedSiteDashboardData[]>([]);
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
@@ -49,7 +50,12 @@ export default function OperationsDashboardScreen({ navigation }: any) {
     fetchDashboardData();
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
     try {
       await signOut();
       navigation.replace('Login');
@@ -178,6 +184,12 @@ export default function OperationsDashboardScreen({ navigation }: any) {
           }
         />
       )}
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }

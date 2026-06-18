@@ -27,7 +27,7 @@ interface DocItem {
   id?: string;
   name: string;
   nameHindi: string;
-  type: 'aadhaar' | 'photo' | 'police_verification' | 'address_proof' | 'other';
+  type: 'aadhaar' | 'aadhaar_front' | 'aadhaar_back' | 'photo' | 'police_verification' | 'address_proof' | 'other';
   status: 'verified' | 'pending' | 'rejected' | 'missing';
   reason?: string;
   url?: string;
@@ -110,6 +110,10 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
         const matched = dbDocs.find((d) => {
           if (doc.type === 'other') {
             return d.document_type === 'other' && d.document_name?.toLowerCase().includes(doc.name.toLowerCase());
+          }
+          // For aadhaar, match both legacy 'aadhaar' and new 'aadhaar_front' types
+          if (doc.type === 'aadhaar') {
+            return d.document_type === 'aadhaar' || d.document_type === 'aadhaar_front';
           }
           return d.document_type === doc.type;
         });
@@ -344,7 +348,7 @@ export default function GuardDocumentsScreen({ navigation }: { navigation: any }
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>

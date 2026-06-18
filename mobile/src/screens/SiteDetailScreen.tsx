@@ -28,6 +28,7 @@ import * as siteAssignmentService from '../api/siteAssignmentService';
 import * as workforceAttendanceService from '../api/workforceAttendanceService';
 import { useLocation } from '../hooks/useLocation';
 import { supabase } from '../api/supabase';
+import SuccessModal from '../components/SuccessModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const mapStyle: any[] = [];
@@ -81,6 +82,9 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMetricsModal, setShowMetricsModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   // Edit settings form state
   const [editAddress, setEditAddress] = useState('');
@@ -479,7 +483,9 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
             try {
               setLoading(true);
               await siteAssignmentService.deactivateAssignment(assignmentId);
-              Alert.alert('Success', 'Personnel unassigned successfully.');
+              setSuccessMessage('Personnel unassigned successfully.');
+              setOnSuccessClose(() => () => {});
+              setShowSuccessModal(true);
               loadSiteData();
             } catch (err: any) {
               console.error('Error unassigning personnel:', err);
@@ -525,7 +531,9 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
       });
 
       setSiteDetails(updated);
-      Alert.alert('Success', 'Site configuration updated successfully!');
+      setSuccessMessage('Site configuration updated successfully!');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       setShowSettingsModal(false);
       setActiveTab('Profile');
     } catch (err: any) {
@@ -1124,7 +1132,7 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
   if (loading && !refreshing) {
     return (
       <View style={s.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#002752" />
+        <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
         {/* Top Navbar Skeleton */}
         <View style={[s.topNavbarSingle, { paddingTop: insets.top }]}>
@@ -1210,7 +1218,7 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#002752" />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topNavbarSingle, { paddingTop: insets.top }]}>
@@ -1614,6 +1622,12 @@ export default function SiteDetailScreen({ navigation, route }: SiteDetailProps)
           <Text style={s.navLabel}>More</Text>
         </TouchableOpacity>
       </View>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

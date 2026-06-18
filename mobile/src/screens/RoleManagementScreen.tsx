@@ -25,6 +25,7 @@ import { useAuth } from '../hooks/useAuth';
 import * as roleAssignmentService from '../api/roleAssignmentService';
 import * as managerPermService from '../api/managerPermissionsService';
 import { supabase } from '../api/supabase';
+import SuccessModal from '../components/SuccessModal';
 import type { RoleAssignment } from '../api/roleAssignmentService';
 
 // Enable LayoutAnimation on Android
@@ -91,6 +92,9 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
   const [permAssignment, setPermAssignment] = useState<RoleAssignment | null>(null);
   const [permToggles, setPermToggles] = useState<Record<string, boolean>>({});
   const [isSavingPerms, setIsSavingPerms] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   // Animations
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -194,7 +198,9 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
                   );
                   setIsModalVisible(false);
                   await loadAssignments();
-                  Alert.alert('Success', 'Role assigned successfully!');
+                  setSuccessMessage('Role assigned successfully!');
+                  setOnSuccessClose(() => () => {});
+                  setShowSuccessModal(true);
                 } catch (err: any) {
                   Alert.alert('Error', err.message || 'Failed to assign role');
                 } finally {
@@ -215,7 +221,9 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
       );
       setIsModalVisible(false);
       await loadAssignments();
-      Alert.alert('Success', 'Role assigned successfully!');
+      setSuccessMessage('Role assigned successfully!');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to assign role');
     } finally {
@@ -287,7 +295,9 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
         )
       );
       setIsPermModalVisible(false);
-      Alert.alert('Saved', 'Manager access permissions updated successfully.');
+      setSuccessMessage('Manager access permissions updated successfully.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to save permissions');
     } finally {
@@ -302,7 +312,7 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
   if (user?.role !== 'admin' && user?.role !== 'super_admin') {
     return (
       <View style={[s.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#faf9fd" />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <MaterialIcons name="security" size={80} color="#BA1A1A" />
         <Text style={{ fontSize: 22, fontWeight: '700', color: '#1A1C2B', marginTop: 16, marginBottom: 8 }}>Access Denied</Text>
         <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22, paddingHorizontal: 20, marginBottom: 24 }}>
@@ -320,7 +330,7 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -810,6 +820,12 @@ export default function RoleManagementScreen({ navigation }: RoleManagementScree
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

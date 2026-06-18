@@ -368,7 +368,13 @@ export const PersonnelCategoryProvider: React.FC<PersonnelCategoryProviderProps>
     }
     
     // Validation: Check if any category IDs were found for the selected group
+    // Only warn if categories have actually been loaded (length > 0 means data is available)
     if (categoryIds.length === 0 && catType !== 'all') {
+      if (categories.length === 0) {
+        // Categories haven't loaded yet — don't warn, just return empty (no filter applied)
+        return { ids: [], error: null };
+      }
+
       const categoryGroupNames: Record<CategoryFilterType, string> = {
         guards: 'Guards',
         gunmen: 'Gunman Personnel',

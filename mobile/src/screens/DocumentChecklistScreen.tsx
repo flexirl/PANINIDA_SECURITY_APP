@@ -22,6 +22,7 @@ import CachedImage from '../components/CachedImage';
 import type { DocumentChecklistItem, WorkforcePersonnel } from '../types/workforce';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useAuth } from '../hooks/useAuth';
+import SuccessModal from '../components/SuccessModal';
 
 interface DocumentChecklistScreenProps {
   route: any;
@@ -46,6 +47,9 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerTitle, setViewerTitle] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const loadData = async (silent = false) => {
     try {
@@ -121,7 +125,9 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
       });
 
       if (uploadRes.success) {
-        Alert.alert('Success / सफलता', 'Document uploaded successfully. Awaiting admin verification. / दस्तावेज़ सफलतापूर्वक अपलोड किया गया। व्यवस्थापक सत्यापन की प्रतीक्षा है।');
+        setSuccessMessage('Document uploaded successfully. Awaiting admin verification. / दस्तावेज़ सफलतापूर्वक अपलोड किया गया। व्यवस्थापक सत्यापन की प्रतीक्षा है।');
+        setOnSuccessClose(() => () => {});
+        setShowSuccessModal(true);
         loadData(true);
       } else {
         Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not save document. Please try again. / दस्तावेज़ सहेज नहीं सके। कृपया पुनः प्रयास करें।');
@@ -138,7 +144,9 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
     try {
       setActionLoading(true);
       await verifyDocument(docId);
-      Alert.alert('Success', 'Document marked as verified.');
+      setSuccessMessage('Document marked as verified.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       loadData(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Verification failed.');
@@ -312,6 +320,12 @@ export default function DocumentChecklistScreen({ route, navigation }: DocumentC
           </View>
         </View>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

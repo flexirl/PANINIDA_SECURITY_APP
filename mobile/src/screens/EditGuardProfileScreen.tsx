@@ -25,6 +25,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { useAuth } from '../hooks/useAuth';
 import * as guardService from '../api/guardService';
 import { useFileUpload } from '../hooks/useFileUpload';
+import SuccessModal from '../components/SuccessModal';
 
 const LOGO_URL =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCQ1nR-azIGzwp04pulq6olrkEqAb1txijCpWpJdEUL2C84FKePxt77NS2Hn8UW9CsJPJkugrwhCY6hePFIXW5_Q-QVNBBn6MSXo1B9u6ZMjgAnSg1-NwcAR3o20ChzVMO1HVOKhcVesFsHMQxMqurEaMg2eAFs-TIcUJxxzrPgLm7OrFQ8uN_8-yGhkIuWrlny29UxzziSSj3K0H6JbXJHHXny9-KXM9ND_lQa4gSHSofs__S_66Zm6OCpDjMEmLi4lUm05ExxfXc';
@@ -96,6 +97,9 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
   // Dropdown Modal States
   const [bloodModalVisible, setBloodModalVisible] = useState(false);
   const [relationModalVisible, setRelationModalVisible] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   // Status pulse animation
   const pulseAnim = React.useRef(new Animated.Value(0)).current;
@@ -221,7 +225,9 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
             await refreshProfile();
           }
           setAvatarUri(uploadRes.url);
-          Alert.alert('Success / सफलता', 'Profile photo updated successfully! / प्रोफ़ाइल फ़ोटो सफलतापूर्वक अपडेट हो गई!');
+          setSuccessMessage('Profile photo updated successfully! / प्रोफ़ाइल फ़ोटो सफलतापूर्वक अपडेट हो गई!');
+          setOnSuccessClose(() => () => {});
+          setShowSuccessModal(true);
         } else {
           Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not update profile photo. / प्रोफ़ाइल फ़ोटो अपडेट नहीं कर सके।');
         }
@@ -293,12 +299,9 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
         await refreshProfile();
       }
 
-      Alert.alert('Success', 'Profile updated successfully!', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      setSuccessMessage('Profile updated successfully!');
+      setOnSuccessClose(() => () => navigation.goBack());
+      setShowSuccessModal(true);
     } catch (err: any) {
       console.error('Failed to save profile changes:', err);
       Alert.alert('Save Failed', err.message || 'Unable to update profile. Please try again.');
@@ -326,7 +329,7 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
   if (loading) {
     return (
       <View style={s.loadingContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={s.loadingText}>Accessing profile credentials...</Text>
       </View>
@@ -403,7 +406,7 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top AppBar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -673,6 +676,12 @@ export default function EditGuardProfileScreen({ navigation, route }: { navigati
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

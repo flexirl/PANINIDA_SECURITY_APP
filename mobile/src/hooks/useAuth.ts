@@ -113,9 +113,22 @@ export function useAuth() {
   };
 
   const refreshProfile = async () => {
-    if (!user?.id) return null;
+    let userId = user?.id;
+
+    // If user state hasn't been set yet, try to resolve from the active Supabase session
+    if (!userId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        userId = session?.user?.id;
+      } catch (sessionErr) {
+        console.warn('[useAuth] Could not get session for refreshProfile:', sessionErr);
+      }
+    }
+
+    if (!userId) return null;
+
     try {
-      const updated = await authService.fetchUserProfile(user.id);
+      const updated = await authService.fetchUserProfile(userId);
       setUser(updated);
       return updated;
     } catch (err) {

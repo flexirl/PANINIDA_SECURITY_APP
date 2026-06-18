@@ -177,7 +177,7 @@ export default function SiteDashboardScreen({ route, navigation }: SiteDashboard
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#002752" />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topNavbar, { paddingTop: insets.top }]}>

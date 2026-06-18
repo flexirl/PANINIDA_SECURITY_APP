@@ -326,7 +326,7 @@ export async function updateGuard(id: string, updates: Partial<GuardProfile>): P
  */
 export async function uploadGuardDocument(
   guardId: string,
-  documentType: 'aadhaar' | 'photo' | 'police_verification' | 'address_proof' | 'other',
+  documentType: 'aadhaar' | 'aadhaar_front' | 'aadhaar_back' | 'photo' | 'police_verification' | 'address_proof' | 'other',
   fileUri: string,
   fileName?: string,
 ): Promise<{ document_url: string; id: string }> {

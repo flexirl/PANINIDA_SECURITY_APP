@@ -23,6 +23,7 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import * as payrollService from '../api/payrollService';
+import SuccessModal from '../components/SuccessModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -70,7 +71,7 @@ function generateMonths(): MonthData[] {
     months.push({
       key,
       label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`,
-      shortLabel: MONTH_NAMES[d.getMonth()],
+      shortLabel: `${MONTH_NAMES[d.getMonth()].toUpperCase()} ${d.getFullYear()}`,
       year: d.getFullYear(),
     });
   }
@@ -180,14 +181,6 @@ function MonthPill({
         >
           {month.shortLabel}
         </Text>
-        <Text
-          style={[
-            s.monthPillYear,
-            isActive ? s.monthPillYearActive : s.monthPillYearInactive,
-          ]}
-        >
-          {month.year}
-        </Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -260,9 +253,7 @@ function SalarySummaryCard({ entries }: { entries: PayrollEntry[] }) {
 
   return (
     <View style={s.summaryCard}>
-      <View style={{ position: 'absolute', top: 0, right: 0, opacity: 0.1, transform: [{ translateX: 40 }, { translateY: -40 }] }}>
-        <MaterialIcons name="account-balance-wallet" size={160} color="#ffffff" />
-      </View>
+      <View style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '45%', backgroundColor: 'rgba(255,255,255,0.03)', borderTopLeftRadius: 100, borderBottomLeftRadius: 100 }} />
       <View style={s.summaryContent}>
         <View style={s.summaryMainRow}>
           <View>
@@ -282,7 +273,7 @@ function SalarySummaryCard({ entries }: { entries: PayrollEntry[] }) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.breakdownLabel}>Deductions</Text>
-            <Text style={[s.breakdownValue, { color: Colors.secondaryContainer }]}>{formatCurrency(totalDed)}</Text>
+            <Text style={[s.breakdownValue, { color: '#E53935' }]}>{formatCurrency(totalDed)}</Text>
           </View>
         </View>
       </View>
@@ -298,11 +289,11 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
 
   // ─── Nav Items (moved inside component to access getLabel) ──
   const navItems = useMemo(() => [
-    { key: 'dashboard', icon: 'dashboard' as const, label: 'Dashboard' },
-    { key: 'personnel', icon: 'people' as const, label: getLabel('plural') },
-    { key: 'attendance', icon: 'fingerprint' as const, label: 'Attendance' },
-    { key: 'more', icon: 'more-horiz' as const, label: 'More' },
-  ], [getLabel]);
+    { key: 'dashboard', icon: 'grid-view' as const, label: 'Dashboard' },
+    { key: 'personnel', icon: 'security' as const, label: 'Guards' },
+    { key: 'sites', icon: 'location-on' as const, label: 'Sites' },
+    { key: 'more', icon: 'menu' as const, label: 'More' },
+  ], []);
 
   // ── State ──
   const [entries, setEntries] = useState<PayrollEntry[]>([]);
@@ -321,6 +312,9 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
   const [overrideTarget, setOverrideTarget] = useState<PayrollEntry | null>(null);
   const [overrideAmount, setOverrideAmount] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   // ── Data Fetching ──
   const fetchPayroll = useCallback(async () => {
@@ -409,8 +403,8 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
       case 'personnel':
         navigation.navigate('WorkforcePersonnelList');
         break;
-      case 'attendance':
-        navigation.navigate('AttendanceList');
+      case 'sites':
+        navigation.navigate('SiteList');
         break;
       case 'more':
         navigation.navigate('MoreMenu');
@@ -423,7 +417,9 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
     try {
       setGenerating(true);
       await payrollService.generatePayroll(selectedMonth);
-      Alert.alert('Success', 'Payroll generated successfully for ' + selectedMonth);
+      setSuccessMessage('Payroll generated successfully for ' + selectedMonth);
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       fetchPayroll();
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to generate payroll.');
@@ -435,7 +431,9 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
   const handleApprovePayroll = useCallback(async (entry: PayrollEntry) => {
     try {
       await payrollService.approvePayrollRecord(entry.id);
-      Alert.alert('Success', `Payroll approved for ${entry.guardName}`);
+      setSuccessMessage(`Payroll approved for ${entry.guardName}`);
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       fetchPayroll();
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to approve payroll.');
@@ -491,11 +489,9 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
       .join('')
       .toUpperCase()
       .slice(0, 2);
-    const attendancePct = item.totalDays > 0 ? item.daysPresent / item.totalDays : 0;
 
     return (
-      <TouchableOpacity activeOpacity={0.85} style={s.payrollCard}>
-        {/* Card Header */}
+      <TouchableOpacity activeOpacity={0.85} style={s.payrollCard} onPress={() => handleOpenOverride(item)}>
         <View style={s.cardHeader}>
           <View style={s.guardInfo}>
             <View style={s.guardInitials}>
@@ -503,103 +499,47 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
             </View>
             <View style={s.guardTexts}>
               <Text style={s.guardName} numberOfLines={1}>{item.guardName}</Text>
-              <View style={s.guardMeta}>
-                <Text style={s.guardIdText}>{item.guardId}</Text>
-                {item.phone && (
-                  <>
-                    <Text style={s.metaDot}>•</Text>
-                    <Text style={s.guardSiteText} numberOfLines={1}>{item.phone}</Text>
-                  </>
-                )}
-                <Text style={s.metaDot}>•</Text>
-                <Text style={s.guardSiteText} numberOfLines={1}>{item.site}</Text>
-              </View>
+              <Text style={s.guardIdText}>{item.guardId} • {selectedCategory === 'all' ? 'Guard' : getLabel('singular')}</Text>
             </View>
           </View>
-          <View style={[s.statusBadge, { backgroundColor: statusCfg.bg }]}>
-            <MaterialIcons name={statusCfg.icon} size={12} color={statusCfg.text} />
-            <Text style={[s.statusText, { color: statusCfg.text }]}>{statusCfg.label}</Text>
+          
+          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <Text style={s.netAmount}>
+              {formatCurrency(item.adminOverride != null ? item.adminOverride : item.netSalary)}
+            </Text>
+            <View style={[s.statusBadge, { backgroundColor: statusCfg.bg === '#FFF3E0' ? '#FFF3E0' : 'rgba(39, 174, 96, 0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }]}>
+              <Text style={[s.statusText, { color: statusCfg.text === '#E65100' ? '#E65100' : '#27AE60' }]}>{statusCfg.label}</Text>
+            </View>
           </View>
         </View>
 
-        {/* Admin Override Banner */}
         {item.adminOverride != null && (
           <View style={s.overrideBanner}>
-            <MaterialIcons name="admin-panel-settings" size={14} color="#7B1FA2" />
+            <MaterialIcons name="admin-panel-settings" size={12} color="#7B1FA2" />
             <Text style={s.overrideBannerText}>
-              Admin Override: {formatCurrency(item.adminOverride)}
+              Admin Override applied
             </Text>
           </View>
         )}
 
-        {/* Salary Breakdown */}
-        <View style={s.salaryBreakdown}>
-          <View style={s.salaryItem}>
-            <Text style={s.salaryItemLabel}>Base</Text>
-            <Text style={s.salaryItemValue}>{formatCurrency(item.baseSalary)}</Text>
-          </View>
-          <View style={s.salaryDivider} />
-          <View style={s.salaryItem}>
-            <Text style={s.salaryItemLabel}>Overtime</Text>
-            <Text style={s.salaryItemValue}>{formatCurrency(item.overtime)}</Text>
-          </View>
-          <View style={s.salaryDivider} />
-          <View style={s.salaryItem}>
-            <Text style={s.salaryItemLabel}>Deductions</Text>
-            <Text style={[s.salaryItemValue, { color: Colors.dangerRed }]}>
-              -{formatCurrency(item.deductions)}
-            </Text>
-          </View>
-        </View>
-
-        {/* Card Footer */}
-        <View style={s.cardFooter}>
-          <View style={s.attendanceRow}>
-            <MaterialIcons name="event-available" size={14} color={Colors.onSurfaceVariant} />
-            <Text style={s.attendanceText}>
-              {item.daysPresent}/{item.totalDays} days
-            </Text>
-            <View style={s.attendanceBarBg}>
-              <View
-                style={[
-                  s.attendanceBarFill,
-                  {
-                    width: `${Math.min(attendancePct * 100, 100)}%`,
-                    backgroundColor: attendancePct >= 0.9 ? Colors.successGreen : attendancePct >= 0.7 ? Colors.warningAmber : Colors.dangerRed,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-          <View style={s.netSalaryContainer}>
-            <Text style={s.netLabel}>NET PAY</Text>
-            <Text style={[s.netAmount, item.adminOverride != null && s.strikethrough]}>
-              {formatCurrency(item.netSalary)}
-            </Text>
-            {item.adminOverride != null && (
-              <Text style={[s.netAmount, { color: '#7B1FA2' }]}>
-                {formatCurrency(item.adminOverride)}
-              </Text>
-            )}
-          </View>
-        </View>
-
-        {/* Override & Approve Buttons */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity style={[s.overrideBtn, { flex: 1 }]} activeOpacity={0.7} onPress={() => handleOpenOverride(item)}>
-            <MaterialIcons name="edit" size={14} color={Colors.primary} />
-            <Text style={s.overrideBtnText}>Set Final Salary</Text>
+        <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: Colors.outlineVariant }}>
+          <TouchableOpacity style={{ flex: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }} activeOpacity={0.7} onPress={() => handleOpenOverride(item)}>
+            <MaterialIcons name="edit" size={16} color={Colors.outline} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.outline }}>Set Final Salary</Text>
           </TouchableOpacity>
           {(item.status === 'draft' || item.status === 'generated') && (
-            <TouchableOpacity style={[s.overrideBtn, { flex: 1, backgroundColor: '#e7f5e9', borderColor: '#c8e6c9', justifyContent: 'center' }]} activeOpacity={0.7} onPress={() => handleApprovePayroll(item)}>
-              <MaterialIcons name="check-circle" size={14} color="#2E7D32" />
-              <Text style={[s.overrideBtnText, { color: '#2E7D32' }]}>Approve</Text>
-            </TouchableOpacity>
+            <>
+              <View style={{ width: 1, backgroundColor: Colors.outlineVariant }} />
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(39, 174, 96, 0.05)' }} activeOpacity={0.7} onPress={() => handleApprovePayroll(item)}>
+                <MaterialIcons name="check-circle" size={16} color="#27AE60" />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#27AE60' }}>Approve</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </TouchableOpacity>
     );
-  }, [s, handleOpenOverride, handleApprovePayroll]);
+  }, [s, handleOpenOverride, handleApprovePayroll, selectedCategory, getLabel]);
 
   // ── Loading State ──
   if (loading && entries.length === 0) {
@@ -614,34 +554,29 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
   // ── Render ──
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top Bar ═══ */}
       <View style={s.topBar}>
         <View style={s.topBarInner}>
           <View style={s.topBarLeft}>
             <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+              <MaterialIcons name="arrow-back" size={24} color={Colors.onSurface} />
             </TouchableOpacity>
-            <View>
-              <Text style={s.topBarTitle}>Payroll</Text>
-              <Text style={s.topBarSubtitle}>GUARDS MANAGEMENT</Text>
-            </View>
+          </View>
+          <View style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none">
+            <Text style={[s.topBarTitle, { textTransform: 'uppercase', letterSpacing: 1 }]}>Payroll</Text>
           </View>
           <View style={s.topBarRight}>
-            <TouchableOpacity style={s.topBarIconBtn}>
-              <MaterialIcons name="file-download" size={22} color={Colors.onSurfaceVariant} />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.topBarIconBtn}>
-              <MaterialIcons name="filter-list" size={22} color={Colors.onSurfaceVariant} />
-            </TouchableOpacity>
-            <View style={{ marginLeft: 8, width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: Colors.primary, overflow: 'hidden', position: 'relative' }}>
-              <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAitTMNtrNFaz7QUdtwrSearo3SE6qydxj_n541O7cVC3cmoapvuUFniJ7nUxSB4okBZWQC848tYYTEQ2eGN2_pgwvsKUqq2ZlhIpuHtQwpkgrG2X-Z4UtXGJ2IJlHlS0Q06eVAMUlGS1NF65kVXCx9UGdDGW0wwAb8cI5hf-l32T7jKaqcabdovzBsxp8yolc9pzF3_oH7rB_2xMkZbJrwMot_BPEebhOnYXsxS1q0QSuMbVkOFsnU-uUqu4emNITsbQlub21gysk' }} style={{ width: '100%', height: '100%' }} />
-              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.successGreen, borderWidth: 2, borderColor: '#fff' }} />
-            </View>
+            <Image 
+              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCRyhUcTQWkIXJhYfiYHNsCWBHbHW-BmdKstBO-GTXBU8GREShei1cC7zxtCgfILG4L14WEnclS8-skHvaUwmfBQ24vnZwIANui91FPIfw-PStCPxGYhYTt873ArflucH4XT1zX_J3gx43ROSeEJ2bPa1gbSTw8c5bcrmEkC36obgQe0Z0Wrlq7ODX_WCNqg-PdCBxe4CZZO3KsClAQ_LGoGJO9p_2uEFwdrMeaMPyNxGYJvT2hzczjcUAt081W7V5pJAsvlwUnaF0' }} 
+              style={{ width: 40, height: 40, resizeMode: 'contain' }} 
+            />
           </View>
         </View>
       </View>
+
+      <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.outline, letterSpacing: 1, marginHorizontal: Spacing.screenPadding, marginTop: 16, marginBottom: 8 }}>FINANCIAL PERIOD</Text>
 
       {/* ═══ Month Selector ═══ */}
       <View style={s.monthSelectorContainer}>
@@ -663,59 +598,28 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
 
       {/* ═══ Search & Filters ═══ */}
       <View style={s.searchSection}>
-        <View style={[s.searchBarWrapper, searchFocused && s.searchBarWrapperFocused]}>
-          <MaterialIcons name="search" size={20} color={Colors.outline} style={s.searchIcon} />
-          <TextInput
-            style={s.searchInput}
-            placeholder={`Search ${getLabel('plural').toLowerCase()}...`}
-            placeholderTextColor={Colors.outline}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity style={s.clearBtn} onPress={() => setSearchQuery('')}>
-              <MaterialIcons name="close" size={16} color={Colors.outline} />
-            </TouchableOpacity>
-          )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: Spacing.screenPadding }}>
+          <View style={[s.searchBarWrapper, { flex: 1, marginHorizontal: 0 }, searchFocused && s.searchBarWrapperFocused]}>
+            <MaterialIcons name="search" size={20} color={Colors.outline} style={s.searchIcon} />
+            <TextInput
+              style={s.searchInput}
+              placeholder="Search by name or ID..."
+              placeholderTextColor={Colors.outline}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity style={s.clearBtn} onPress={() => setSearchQuery('')}>
+                <MaterialIcons name="close" size={16} color={Colors.outline} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity style={{ width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: Colors.outlineVariant, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceContainerLowest }}>
+            <MaterialIcons name="tune" size={24} color={Colors.onSurfaceVariant} />
+          </TouchableOpacity>
         </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.filtersScroll}
-        >
-          <FilterChipButton
-            label="All"
-            isActive={activeFilter === 'all'}
-            onPress={() => setActiveFilter('all')}
-          />
-          <FilterChipButton
-            label="Draft"
-            isActive={activeFilter === 'draft'}
-            onPress={() => setActiveFilter('draft')}
-            dotColor={getStatusConfig('draft').dotColor}
-          />
-          <FilterChipButton
-            label="Generated"
-            isActive={activeFilter === 'generated'}
-            onPress={() => setActiveFilter('generated')}
-            dotColor={getStatusConfig('generated').dotColor}
-          />
-          <FilterChipButton
-            label="Approved"
-            isActive={activeFilter === 'approved'}
-            onPress={() => setActiveFilter('approved')}
-            dotColor={getStatusConfig('approved').dotColor}
-          />
-          <FilterChipButton
-            label="Paid"
-            isActive={activeFilter === 'paid'}
-            onPress={() => setActiveFilter('paid')}
-            dotColor={getStatusConfig('paid').dotColor}
-          />
-        </ScrollView>
       </View>
 
       {/* ═══ List content ═══ */}
@@ -733,7 +637,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
 
             {/* Bulk Generate Action */}
             <TouchableOpacity 
-              style={[s.overrideBtn, { marginBottom: 16, alignSelf: 'stretch', backgroundColor: Colors.secondary, padding: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }]} 
+              style={[s.overrideBtn, { marginBottom: 24, alignSelf: 'stretch', backgroundColor: '#C62828', padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, borderTopWidth: 0 }]} 
               activeOpacity={0.8}
               onPress={handleGeneratePayroll}
               disabled={generating}
@@ -741,22 +645,17 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
               {generating ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <MaterialIcons name="payments" size={24} color="#fff" />
+                <MaterialIcons name="receipt-long" size={20} color="#fff" />
               )}
-              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>
-                {generating ? 'Generating...' : `Generate Payroll for ${MONTHS.find(m => m.key === selectedMonth)?.label}`}
+              <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>
+                {generating ? 'Generating...' : `Generate Payroll ${MONTHS.find(m => m.key === selectedMonth)?.shortLabel}`}
               </Text>
             </TouchableOpacity>
 
             {/* Result Count */}
             <View style={s.listHeader}>
-              <Text style={s.resultCount}>
-                {filteredEntries.length} {selectedCategory === 'all' ? 'workforce' : getLabel('plural').toLowerCase()} payroll entr{filteredEntries.length !== 1 ? 'ies' : 'y'}
-              </Text>
-              <TouchableOpacity style={s.sortBtn} activeOpacity={0.7}>
-                <MaterialIcons name="sort" size={16} color={Colors.onSurfaceVariant} />
-                <Text style={s.sortBtnText}>Sort</Text>
-              </TouchableOpacity>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.onSurface }}>Employees</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.outline }}>{filteredEntries.length} Total</Text>
             </View>
           </View>
         )}
@@ -785,7 +684,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
               <MaterialIcons
                 name={item.icon}
                 size={24}
-                color={isActive ? '#ffffff' : Colors.onSurfaceVariant}
+                color={isActive ? '#C62828' : Colors.onSurfaceVariant}
               />
               <Text style={[s.navLabel, isActive && s.navLabelActive]}>
                 {item.label}
@@ -803,13 +702,15 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
             <View style={s.modalHandle} />
             <View style={s.modalHeader}>
               <MaterialIcons name="admin-panel-settings" size={24} color="#7B1FA2" />
-              <Text style={s.modalTitle}>Set Final Salary</Text>
+              <Text style={[s.modalTitle, { textAlign: 'right', flex: 1 }]}>Set Final Salary</Text>
             </View>
 
             {overrideTarget && (
               <View style={s.modalBody}>
-                <Text style={s.modalGuardName}>{overrideTarget.guardName}</Text>
-                <Text style={s.modalGuardMeta}>{overrideTarget.guardId} • {overrideTarget.site}</Text>
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={s.modalGuardName}>{overrideTarget.guardName}</Text>
+                  <Text style={s.modalGuardMeta}>{overrideTarget.guardId} • {overrideTarget.site}</Text>
+                </View>
 
                 <View style={s.modalCalcRow}>
                   <Text style={s.modalCalcLabel}>Calculated Salary</Text>
@@ -820,7 +721,7 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
                 </Text>
 
                 <View style={s.modalInputGroup}>
-                  <Text style={s.modalInputLabel}>Final Salary (₹)</Text>
+                  <Text style={s.modalInputLabel}>FINAL SALARY (₹)</Text>
                   <View style={s.modalInputWrap}>
                     <Text style={s.modalCurrencyPrefix}>₹</Text>
                     <TextInput
@@ -852,6 +753,12 @@ export default function PayrollListScreen({ navigation }: PayrollListScreenProps
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }
@@ -920,19 +827,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   monthPill: {
-    width: 64,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.full,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   monthPillActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: Colors.primary,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   monthPillInactive: {
     backgroundColor: Colors.surfaceContainerLowest,
@@ -940,25 +849,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.outlineVariant,
   },
   monthPillText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
   },
   monthPillTextActive: {
-    color: Colors.onPrimary,
+    color: Colors.primary,
   },
   monthPillTextInactive: {
     color: Colors.onSurfaceVariant,
-  },
-  monthPillYear: {
-    fontSize: 10,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  monthPillYearActive: {
-    color: Colors.primaryFixedDim,
-  },
-  monthPillYearInactive: {
-    color: Colors.outline,
   },
 
   // ── Search ──
@@ -1047,17 +945,15 @@ const styles = StyleSheet.create({
 
   // ── Summary Card ──
   summaryCard: {
-    backgroundColor: Colors.primaryContainer,
-    borderRadius: BorderRadius.xl,
+    backgroundColor: '#07132F',
+    borderRadius: 20,
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: Colors.primaryContainer,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
   },
   summaryGradientBar: {
     height: 0,
@@ -1072,14 +968,14 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   summaryLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.onPrimaryContainer,
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   summaryAmount: {
-    fontSize: 48,
+    fontSize: 40,
     fontWeight: '800',
     color: '#ffffff',
     marginTop: 4,
@@ -1105,14 +1001,14 @@ const styles = StyleSheet.create({
     display: 'none',
   },
   breakdownLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.onPrimaryContainer,
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.6)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   breakdownValue: {
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: '700',
     color: '#ffffff',
     marginTop: 4,
@@ -1138,6 +1034,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
+    marginBottom: 8,
   },
   resultCount: {
     fontSize: 12,
@@ -1165,58 +1062,47 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceContainerLowest,
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
-    borderRadius: BorderRadius.xl,
+    borderRadius: 16,
     marginBottom: 12,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    padding: 14,
-    paddingBottom: 12,
+    alignItems: 'center',
+    padding: 16,
   },
   guardInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     flex: 1,
   },
   guardInitials: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.primaryContainer,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(195,198,208,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   guardInitialsText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.onPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#07132F',
   },
   guardTexts: {
     flex: 1,
   },
   guardName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    color: Colors.onSurface,
-  },
-  guardMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    marginTop: 3,
+    color: '#000000',
+    marginBottom: 2,
   },
   guardIdText: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
     color: Colors.outline,
   },
   metaDot: {
@@ -1374,7 +1260,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
   },
   navItemActive: {
-    backgroundColor: Colors.primaryContainer,
+    backgroundColor: 'rgba(211, 47, 47, 0.1)',
     borderRadius: 24,
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -1386,7 +1272,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   navLabelActive: {
-    color: '#ffffff',
+    color: '#C62828',
     fontWeight: '700',
   },
 
@@ -1398,10 +1284,10 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
   modalHandle: {
     width: 40,
@@ -1409,31 +1295,31 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.outlineVariant,
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    color: Colors.onSurface,
+    color: '#000000',
   },
   modalBody: {
     gap: 12,
   },
   modalGuardName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.onSurface,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000000',
   },
   modalGuardMeta: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.outline,
-    marginTop: -4,
+    marginTop: 4,
   },
   modalCalcRow: {
     flexDirection: 'row',
@@ -1442,71 +1328,72 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   modalCalcLabel: {
-    fontSize: 14,
-    color: Colors.onSurfaceVariant,
-    fontWeight: '500',
+    fontSize: 15,
+    color: '#333333',
+    fontWeight: '600',
   },
   modalCalcValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.onSurface,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000000',
   },
   modalCalcBreakdown: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLow,
-    padding: 8,
-    borderRadius: 6,
+    backgroundColor: '#F5F5F5',
+    padding: 10,
+    borderRadius: 8,
     overflow: 'hidden',
+    marginTop: 4,
   },
   modalInputGroup: {
     marginTop: 8,
   },
   modalInputLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.outline,
-    textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   modalInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.outlineVariant,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 52,
+    backgroundColor: '#FFFFFF',
   },
   modalCurrencyPrefix: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.onSurface,
-    marginRight: 6,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000000',
+    marginRight: 8,
   },
   modalInput: {
     flex: 1,
-    height: 44,
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.onSurface,
+    height: '100%',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000000',
     padding: 0,
   },
   modalHint: {
     fontSize: 11,
     color: Colors.outline,
-    marginTop: 6,
+    marginTop: 8,
   },
   modalConfirmBtn: {
     flexDirection: 'row',
-    backgroundColor: Colors.primary,
+    backgroundColor: '#07132F',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 14,
-    borderRadius: 10,
+    paddingVertical: 16,
+    borderRadius: 12,
     gap: 8,
-    marginTop: 10,
+    marginTop: 16,
   },
   modalConfirmText: {
     color: Colors.onPrimary,

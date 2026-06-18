@@ -23,6 +23,7 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useAuth } from '../hooks/useAuth';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import { useFontScale, FONT_SCALE_PRESETS, useScaledStyles } from '../context/FontSizeContext';
+import LogoutModal from '../components/LogoutModal';
 
 interface SettingsScreenProps {
   navigation: any;
@@ -32,7 +33,7 @@ const LANGUAGE_OPTIONS = ['English (Default)', 'हिन्दी (Hindi)', '�
 
 export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, signOutUser } = useAuth();
   const { fontScale, setFontScale, scaledSize } = useFontScale();
   const { getLabel } = usePersonnelCategory();
   const s = useScaledStyles(styles);
@@ -62,6 +63,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   // Modal visibility
   const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   const handleExport = (type: 'attendance' | 'payroll' | 'guards') => {
     setIsExporting(type);
@@ -84,23 +86,22 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Confirm Logout',
-      'Are you sure you want to log out of the application?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-          },
-        },
-      ]
-    );
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
+    try {
+      if (signOutUser) {
+        await signOutUser();
+      }
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const adjustGeofence = (val: number) => {
@@ -157,7 +158,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   if (user?.role === 'manager') {
     return (
       <View style={[s.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#faf9fd" />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <MaterialIcons name="security" size={80} color="#BA1A1A" />
         <Text style={{ fontSize: 22, fontWeight: '700', color: '#1A1C2B', marginTop: 16, marginBottom: 8 }}>Access Denied</Text>
         <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22, paddingHorizontal: 20, marginBottom: 24 }}>
@@ -179,7 +180,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   if (!isAdmin) {
     return (
       <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         
         {/* ═══ Top AppBar (Personnel Version) ═══ */}
         <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -314,6 +315,13 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           <View style={{ height: 120 }} />
         </ScrollView>
 
+        {/* ═══ Logout Confirmation Modal ═══ */}
+        <LogoutModal 
+          visible={isLogoutModalVisible} 
+          onCancel={() => setIsLogoutModalVisible(false)} 
+          onConfirm={confirmLogout} 
+        />
+
         {/* ═══ Language Select Modal ═══ */}
         <Modal
           visible={isLanguageModalVisible}
@@ -387,7 +395,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   // ══════════════════════════════════════════════════
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -742,6 +750,13 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* ═══ Logout Confirmation Modal ═══ */}
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
 
       {/* ═══ Language Select Modal ═══ */}
       <Modal
@@ -1355,6 +1370,80 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  logoutModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(26, 28, 31, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  logoutModalContent: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 40,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  logoutIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  logoutModalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.primary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  logoutModalSubtitle: {
+    fontSize: 16,
+    color: Colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  logoutModalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 8,
+  },
+  logoutModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+  },
+  logoutModalCancelTxt: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  logoutModalDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: Colors.outlineVariant,
+  },
+  logoutModalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+  },
+  logoutModalConfirmTxt: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#B02021',
   },
   // ── Role Management Card ──
   roleManagementCard: {

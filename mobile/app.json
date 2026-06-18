@@ -13,7 +13,19 @@
       "resizeMode": "contain",
       "backgroundColor": "#1a3d6d"
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Pan India Security needs your location to record attendance check-in pings every 4 hours during your shift.",
+          "locationAlwaysPermission": "Pan India Security needs background location access to audit your shift attendance every 4 hours.",
+          "locationWhenInUsePermission": "Pan India Security needs your location for geofence-verified attendance check-in.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-task-manager"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.panindiasecurity.app",
@@ -38,11 +50,11 @@
     "androidNavigationBar": {
       "visible": "sticky-immersive",
       "barStyle": "dark-content",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#00000000"
     },
     "androidStatusBar": {
       "barStyle": "dark-content",
-      "backgroundColor": "#FFFFFF",
+      "backgroundColor": "#00000000",
       "translucent": true
     },
     "web": {

@@ -580,7 +580,7 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
   if (loading && !refreshing) {
     return (
       <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.outline, fontWeight: '600', fontSize: 14 }}>
           Retrieving personnel database...
@@ -591,7 +591,7 @@ export default function GuardListScreen({ navigation }: GuardListScreenProps) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>

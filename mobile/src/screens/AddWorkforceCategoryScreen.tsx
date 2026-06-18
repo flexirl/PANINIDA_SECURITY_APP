@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { createCategory, updateCategory } from '../api/workforceCategoryService';
+import SuccessModal from '../components/SuccessModal';
 
 interface AddWorkforceCategoryScreenProps {
   navigation: any;
@@ -49,6 +50,9 @@ export default function AddWorkforceCategoryScreen({ navigation, route }: AddWor
     route?.params?.parentGroupId || 'helpers'
   );
   const [submitting, setSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const headerTitle = editMode ? 'Edit Category' : 'New Category';
   const submitLabel = editMode ? 'Save Changes' : 'Create Category';
@@ -86,9 +90,9 @@ export default function AddWorkforceCategoryScreen({ navigation, route }: AddWor
         }
 
         await updateCategory(editCategoryId, updates);
-        Alert.alert('Success', `Category "${trimmedName}" updated successfully!`, [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        setSuccessMessage(`Category "${trimmedName}" updated successfully!`);
+        setOnSuccessClose(() => () => navigation.goBack());
+        setShowSuccessModal(true);
       } else {
         // Create new category
         await createCategory({
@@ -96,9 +100,9 @@ export default function AddWorkforceCategoryScreen({ navigation, route }: AddWor
           prefix_code: trimmedPrefix,
           attendance_required: attendanceRequired,
         });
-        Alert.alert('Success', `Category "${trimmedName}" created successfully!`, [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        setSuccessMessage(`Category "${trimmedName}" created successfully!`);
+        setOnSuccessClose(() => () => navigation.goBack());
+        setShowSuccessModal(true);
       }
     } catch (err: any) {
       Alert.alert('Error', err?.message || `Failed to ${editMode ? 'update' : 'create'} category`);
@@ -315,6 +319,12 @@ export default function AddWorkforceCategoryScreen({ navigation, route }: AddWor
           )}
         </ScrollView>
       </View>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </KeyboardAvoidingView>
   );
 }

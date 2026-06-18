@@ -82,7 +82,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* Background decoration */}
       <View style={s.bgCircleTopRight} />

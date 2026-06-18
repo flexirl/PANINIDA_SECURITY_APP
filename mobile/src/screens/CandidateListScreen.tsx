@@ -380,7 +380,7 @@ export default function CandidateListScreen({ navigation }: CandidateListScreenP
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -399,12 +399,10 @@ export default function CandidateListScreen({ navigation }: CandidateListScreenP
             <TouchableOpacity activeOpacity={0.7} style={s.topBarIconBtn} onPress={() => navigation.navigate('NotificationCenter')}>
               <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <View style={s.avatarSmall}>
-              <Image
-                source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAURMzBFvovBRfSMLyD18GdbmHO6YM-uaQL14rc_I5lYc3xX2Q6YWrFx_n0OBFR-QrnSS6aeicTNYTQ0wmPZwVLRFQFd-gdtxjuEGnx4fy0T7_gFPWLV3qMZI3Bz0SYa1bpwU5FE_Nm3-pon-QR0bQHr3iv7IWydITPLoSwM-_SP_GGbwF1GZC4wVlgKNyozzQQbug_A2C0eq6L6iVkHSVvagcVdXYOsXN3cT5OpGMc68pDCTNfIK5bpxKTlBZevDm_EqQ3FONayR4' }}
-                style={s.avatarSmallImage as any}
-              />
-            </View>
+            <Image 
+              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCRyhUcTQWkIXJhYfiYHNsCWBHbHW-BmdKstBO-GTXBU8GREShei1cC7zxtCgfILG4L14WEnclS8-skHvaUwmfBQ24vnZwIANui91FPIfw-PStCPxGYhYTt873ArflucH4XT1zX_J3gx43ROSeEJ2bPa1gbSTw8c5bcrmEkC36obgQe0Z0Wrlq7ODX_WCNqg-PdCBxe4CZZO3KsClAQ_LGoGJO9p_2uEFwdrMeaMPyNxGYJvT2hzczjcUAt081W7V5pJAsvlwUnaF0' }} 
+              style={{ width: 40, height: 40, resizeMode: 'contain' }} 
+            />
           </View>
         </View>
       </View>

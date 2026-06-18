@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
     // LIST SITES
     // ======================================================
     if (req.method === "GET" && !siteId) {
-      const roleError = requireRole(user, ["admin", "manager", "guard"]);
+      const roleError = requireRole(user, ["admin", "manager", "operations_manager", "supervisor", "inspector", "guard"]);
       if (roleError) return roleError;
 
       const active = url.searchParams.get("active");

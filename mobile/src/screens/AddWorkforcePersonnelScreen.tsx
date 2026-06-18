@@ -719,7 +719,7 @@ export default function AddWorkforcePersonnelScreen({
       }}
     >
       <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
         {/* ═══ Top App Bar ═══ */}
         <View

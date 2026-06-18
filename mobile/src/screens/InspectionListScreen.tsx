@@ -62,7 +62,7 @@ function mapToReport(r: inspectionService.InspectionRecord): InspectionReport {
     presentGuards: presentNames,
     absentGuards: absentNames,
     status: 'Completed',
-    incidentLevel: r.incident_reported ? (r.incident_severity === 'high' || r.incident_severity === 'critical' ? 'high' : 'minor') : 'none',
+    incidentLevel: 'none',
     remarks: r.remarks || '',
     incidentDesc: r.incident_description,
     photos: r.photos || [],
@@ -148,8 +148,7 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
   const filteredReports = useMemo(() => {
     return reports.filter((rep) => {
       // 1. Chip filter
-      if (activeChip === 'incident' && rep.incidentLevel === 'none') return false;
-      if (activeChip === 'no-incident' && rep.incidentLevel !== 'none') return false;
+      if (activeChip === 'completed' && rep.status !== 'Completed') return false;
       if (activeChip === 'pending' && rep.status !== 'Pending Review') return false;
 
       // 2. Site filter
@@ -170,35 +169,26 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
     navigation.navigate('InspectionDetail', { reportId: report.id });
   };
 
-  const getIncidentBadge = (level: InspectionReport['incidentLevel']) => {
-    switch (level) {
-      case 'high':
-        return {
-          label: 'High Incident',
-          bg: '#FEE2E2',
-          text: '#BA1A1A',
-          icon: 'warning',
-        };
-      case 'minor':
-        return {
-          label: 'Minor Incident',
-          bg: '#FEF3C7',
-          text: '#B45309',
-          icon: 'report',
-        };
-      case 'none':
-        return {
-          label: 'No Incidents',
-          bg: '#D1FAE5',
-          text: '#065F46',
-          icon: 'verified',
-        };
+  const getStatusBadge = (status: string) => {
+    if (status === 'Completed') {
+      return {
+        label: 'Completed',
+        bg: '#D1FAE5',
+        text: '#065F46',
+        icon: 'verified',
+      };
     }
+    return {
+      label: 'Pending Review',
+      bg: '#FEF3C7',
+      text: '#B45309',
+      icon: 'schedule',
+    };
   };
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -219,12 +209,10 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
             <TouchableOpacity activeOpacity={0.7} style={s.topBarIconBtn} onPress={() => navigation.navigate('NotificationCenter')}>
               <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <View style={s.avatarSmall}>
-              <Image
-                source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDZGQQYMOnhjw24-o4h0v6-33nocj0vn9NBS8e_LqLsJevDxIyw2-JqOatBHqi1oKh8zaxYVVMvHZpZDZdPuS-MAMzfd86DwqUfDJpNENkrAbAhyj3VM4OS_cmReEGe9xMNzxEuQzxlaMKzhETyxlnEpqJLImco0PzhT-Q6fsLK9Lw9OqrClNaTNtjwlelBodKKT9sSE5Uk4zBzsTKNxcNNbuUJi2owu3geCbECqXzmewq7y2oT-AAXUQxf2OQmYRVJCVOJTBc6gZI' }}
-                style={s.avatarSmallImage}
-              />
-            </View>
+            <Image 
+              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCRyhUcTQWkIXJhYfiYHNsCWBHbHW-BmdKstBO-GTXBU8GREShei1cC7zxtCgfILG4L14WEnclS8-skHvaUwmfBQ24vnZwIANui91FPIfw-PStCPxGYhYTt873ArflucH4XT1zX_J3gx43ROSeEJ2bPa1gbSTw8c5bcrmEkC36obgQe0Z0Wrlq7ODX_WCNqg-PdCBxe4CZZO3KsClAQ_LGoGJO9p_2uEFwdrMeaMPyNxGYJvT2hzczjcUAt081W7V5pJAsvlwUnaF0' }} 
+              style={{ width: 40, height: 40, resizeMode: 'contain' }} 
+            />
           </View>
         </View>
       </View>
@@ -297,8 +285,7 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
           >
             {[
               { key: 'all', label: 'All Inspections' },
-              { key: 'incident', label: 'With Incidents' },
-              { key: 'no-incident', label: 'No Incidents' },
+              { key: 'completed', label: 'Completed' },
               { key: 'pending', label: 'Pending Review' },
             ].map((chip) => {
               const isActive = activeChip === chip.key;
@@ -325,7 +312,7 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
         <View style={s.reportsList}>
           {filteredReports.length > 0 ? (
             filteredReports.map((item) => {
-              const badge = getIncidentBadge(item.incidentLevel);
+              const badge = getStatusBadge(item.status);
               return (
                 <View key={item.id} style={s.reportCard}>
                   <View style={s.cardHeaderRow}>
@@ -347,28 +334,11 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
                   <View style={s.summaryGrid}>
                     <View style={s.gridCell}>
                       <Text style={s.cellLabel}>Inspector</Text>
-                      <Text style={s.cellValue}>{item.inspectorName}</Text>
+                      <Text style={s.cellValue} numberOfLines={1}>{item.inspectorName}</Text>
                     </View>
                     <View style={s.gridCell}>
-                      <Text style={s.cellLabel}>Present</Text>
-                      <Text style={[s.cellValue, { color: Colors.primary }]}>
-                        {item.presentGuardsCount} Guards
-                      </Text>
-                    </View>
-                    <View style={s.gridCell}>
-                      <Text style={s.cellLabel}>Absent</Text>
-                      <Text
-                        style={[
-                          s.cellValue,
-                          item.absentGuardsCount > 0 && { color: Colors.secondary },
-                        ]}
-                      >
-                        {String(item.absentGuardsCount).padStart(2, '0')} Guards
-                      </Text>
-                    </View>
-                    <View style={s.gridCell}>
-                      <Text style={s.cellLabel}>Status</Text>
-                      <Text style={s.cellValue}>{item.status}</Text>
+                      <Text style={s.cellLabel}>Remarks</Text>
+                      <Text style={s.cellValue} numberOfLines={1}>{item.remarks || 'No remarks provided'}</Text>
                     </View>
                   </View>
 
@@ -394,14 +364,7 @@ export default function InspectionListScreen({ navigation }: { navigation: any }
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* ═══ Issue/Add Inspection FAB ═══ */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        style={s.fab}
-        onPress={() => Alert.alert('Create Inspection', 'Incident logging dashboard is coming soon.')}
-      >
-        <MaterialIcons name="add" size={32} color={Colors.onSecondary} />
-      </TouchableOpacity>
+      {/* FAB removed per user request */}
 
       {/* ═══ Site Selection Dropdown Modal ═══ */}
       <Modal

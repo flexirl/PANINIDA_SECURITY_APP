@@ -21,6 +21,8 @@ import { getClientPerformanceOverview, submitWorkforceRating, getClientSiteInfo 
 import { signOut } from '../api/authService';
 import ClientTopNav from '../components/ClientTopNav';
 import ClientBottomNav from '../components/ClientBottomNav';
+import SuccessModal from '../components/SuccessModal';
+import LogoutModal from '../components/LogoutModal';
 import type { WorkforcePersonnel } from '../types/workforce';
 
 export default function ClientPerformanceScreen({ navigation }: any) {
@@ -39,6 +41,10 @@ export default function ClientPerformanceScreen({ navigation }: any) {
   const [appreciation, setAppreciation] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [clientSiteId, setClientSiteId] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   const loadData = async (isRefreshing = false) => {
     try {
@@ -67,7 +73,12 @@ export default function ClientPerformanceScreen({ navigation }: any) {
     loadData(true);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
     try {
       await signOut();
       navigation.replace('Login');
@@ -96,7 +107,9 @@ export default function ClientPerformanceScreen({ navigation }: any) {
         appreciation: appreciation
       });
       setRatingModalVisible(false);
-      Alert.alert('Success', `Review submitted successfully for ${selectedPersonnel.name}.`);
+      setSuccessMessage(`Review submitted successfully for ${selectedPersonnel.name}.`);
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       loadData(true);
     } catch (err: any) {
       Alert.alert('Submission Failed', err.message || 'Unable to save review');
@@ -435,6 +448,18 @@ export default function ClientPerformanceScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }

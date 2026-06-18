@@ -128,7 +128,7 @@ export default function AddCandidateScreen({ navigation }: AddCandidateScreenPro
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={s.topBar}>

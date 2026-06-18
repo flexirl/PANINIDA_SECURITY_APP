@@ -6,7 +6,7 @@
 
 // ─── File Category Definitions (mirrors server-side CATEGORY_CONFIG) ───
 
-export type FileCategory = 'profiles' | 'documents' | 'sites' | 'incidents' | 'attendance';
+export type FileCategory = 'profiles' | 'documents' | 'sites' | 'incidents' | 'attendance' | 'inspections';
 
 export interface CategoryConfig {
   bucket: string;
@@ -86,6 +86,19 @@ export const UPLOAD_CATEGORIES: Record<FileCategory, CategoryConfig> = {
       maxWidth: 640,
       maxHeight: 480,
       quality: 0.7,
+    },
+  },
+  inspections: {
+    bucket: 'inspection-photos',
+    maxSizeBytes: 5 * 1024 * 1024,
+    maxSizeMB: 5,
+    allowedMimeTypes: ['image/jpeg', 'image/png'],
+    allowedExtensions: ['jpg', 'jpeg', 'png'],
+    isPublic: true,
+    compression: {
+      maxWidth: 1920,
+      maxHeight: 1080,
+      quality: 0.8,
     },
   },
 };

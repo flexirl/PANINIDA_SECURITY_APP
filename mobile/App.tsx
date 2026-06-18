@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FontSizeProvider } from './src/context/FontSizeContext';
 import { PersonnelCategoryProvider } from './src/context/PersonnelCategoryContext';
+import { NotificationProvider } from './src/context/NotificationContext';
 import { useAuth } from './src/hooks/useAuth';
 
 import SplashScreen from './src/screens/SplashScreen';
@@ -30,6 +31,11 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+
+// Inventory Screens
+import InventoryListScreen from './src/screens/InventoryListScreen';
+import AddEditInventoryScreen from './src/screens/AddEditInventoryScreen';
+import InventoryDetailScreen from './src/screens/InventoryDetailScreen';
 
 // Guard / Personnel Screens
 import GuardHomeScreen from './src/screens/GuardHomeScreen';
@@ -77,6 +83,7 @@ import IncidentReportScreen from './src/screens/IncidentReportScreen';
 import OperationsDashboardScreen from './src/screens/OperationsDashboardScreen';
 import EscalatedComplaintsScreen from './src/screens/EscalatedComplaintsScreen';
 import RoleManagementScreen from './src/screens/RoleManagementScreen';
+import InspectorDashboardScreen from './src/screens/InspectorDashboardScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -115,6 +122,11 @@ export type RootStackParamList = {
   NotificationCenter: undefined;
   Reports: undefined;
   Profile: undefined;
+  
+  // Inventory Routes
+  InventoryList: undefined;
+  AddEditInventory: { id?: string };
+  InventoryDetail: { id: string };
   
   // Guard / Personnel Routes
   GuardHome: undefined;
@@ -162,6 +174,7 @@ export type RootStackParamList = {
   OperationsDashboard: undefined;
   EscalatedComplaints: undefined;
   RoleManagement: undefined;
+  InspectorDashboard: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -300,6 +313,21 @@ function AppNavigator() {
         <Stack.Screen
           name="Profile"
           component={ProfileScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="InventoryList"
+          component={InventoryListScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="AddEditInventory"
+          component={AddEditInventoryScreen}
+          options={{ animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="InventoryDetail"
+          component={InventoryDetailScreen}
           options={{ animation: 'slide_from_right' }}
         />
         <Stack.Screen
@@ -529,58 +557,26 @@ function AppNavigator() {
           component={RoleManagementScreen}
           options={{ animation: 'slide_from_right' }}
         />
+        <Stack.Screen
+          name="InspectorDashboard"
+          component={InspectorDashboardScreen}
+          options={{ animation: 'fade' }}
+        />
       </Stack.Navigator>
       </NavigationContainer>
     </PersonnelCategoryProvider>
   );
 }
 
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { View } from 'react-native';
-
-function SystemStatusBarBackground() {
-  const insets = useSafeAreaInsets();
-  return (
-    <View 
-      style={{ 
-        position: 'absolute', 
-        top: 0, 
-        left: 0, 
-        right: 0, 
-        height: insets.top, 
-        backgroundColor: '#FFFFFF', 
-        zIndex: 99999, 
-        pointerEvents: 'none' 
-      }} 
-    />
-  );
-}
-
-function SystemNavBackground() {
-  const insets = useSafeAreaInsets();
-  return (
-    <View 
-      style={{ 
-        position: 'absolute', 
-        bottom: 0, 
-        left: 0, 
-        right: 0, 
-        height: insets.bottom, 
-        backgroundColor: '#FFFFFF', 
-        zIndex: 99999, 
-        pointerEvents: 'none' 
-      }} 
-    />
-  );
-}
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <FontSizeProvider>
-        <AppNavigator />
-        <SystemStatusBarBackground />
-        <SystemNavBackground />
+        <NotificationProvider>
+          <AppNavigator />
+        </NotificationProvider>
       </FontSizeProvider>
     </SafeAreaProvider>
   );

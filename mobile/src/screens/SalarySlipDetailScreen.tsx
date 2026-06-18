@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import * as payrollService from '../api/payrollService';
+import SuccessModal from '../components/SuccessModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -70,6 +71,9 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   // Edit fields state
   const [editBaseSalary, setEditBaseSalary] = useState('');
@@ -189,10 +193,9 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
         status: 'approved',
       } : null);
       
-      Alert.alert(
-        'Payment Approved',
-        `Salary for ${data.guardName} has been approved successfully!`
-      );
+      setSuccessMessage(`Salary for ${data.guardName} has been approved successfully!`);
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to approve payroll.');
     }
@@ -260,7 +263,9 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
       } : null);
 
       setIsEditModalVisible(false);
-      Alert.alert('Success', 'Adjustments saved successfully.');
+      setSuccessMessage('Adjustments saved successfully.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to update adjustments.');
     }
@@ -270,7 +275,7 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { paddingTop: insets.top }]}>
@@ -587,6 +592,12 @@ export default function SalarySlipDetailScreen({ navigation, route }: SalarySlip
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

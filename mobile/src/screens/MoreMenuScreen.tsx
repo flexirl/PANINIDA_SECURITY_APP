@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   StatusBar,
   Alert,
+  Modal,
   Platform,
   Dimensions,
 } from 'react-native';
@@ -19,6 +20,7 @@ import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import { hasModuleAccess } from '../api/managerPermissionsService';
+import LogoutModal from '../components/LogoutModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,8 +41,9 @@ interface MenuItem {
 export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
   const s = useScaledStyles(styles);
   const insets = useSafeAreaInsets();
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, signOutUser } = useAuth();
   const { getLabel } = usePersonnelCategory();
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -87,6 +90,14 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
       subtitle: 'Track issued items',
       navigateTo: 'UniformManagement',
       permKey: 'uniforms',
+    },
+    {
+      key: 'inventory',
+      icon: 'inventory',
+      label: 'Inventory Management',
+      subtitle: 'Track equipment & assets',
+      navigateTo: 'InventoryList',
+      permKey: 'inventory',
     },
     {
       key: 'inspections',
@@ -142,23 +153,22 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Confirm Logout',
-      'Are you sure you want to log out of the application?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-          },
-        },
-      ]
-    );
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
+    try {
+      if (signOutUser) {
+        await signOutUser();
+      }
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const allNavItems = [
@@ -188,7 +198,7 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar (Matches AdminDashboardScreen exactly) ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -305,6 +315,13 @@ export default function MoreMenuScreen({ navigation }: MoreMenuScreenProps) {
 
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* ═══ Logout Confirmation Modal ═══ */}
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
 
       {/* ═══ Bottom Navigation (Floating pill style) ═══ */}
       <View style={[s.bottomNav, { bottom: Math.max(insets.bottom, 16) + 8 }]}>

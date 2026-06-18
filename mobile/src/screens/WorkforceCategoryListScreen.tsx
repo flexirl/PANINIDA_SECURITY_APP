@@ -46,37 +46,37 @@ const MAJOR_GROUPS: MajorGroup[] = [
   {
     id: 'guards',
     name: 'Guards',
-    icon: 'shield',
-    color: '#002752',
-    bgColor: 'rgba(0,39,82,0.08)',
+    icon: 'verified-user',
+    color: '#002752', // primary
+    bgColor: '#ffffff',
     description: 'Security guard personnel',
     matchFn: (n) => ['Guard', 'Supervisor', 'Security Officer'].includes(n),
   },
   {
     id: 'gunmen',
     name: 'Gunmen',
-    icon: 'gpp-good',
-    color: '#8B0000',
-    bgColor: 'rgba(139,0,0,0.08)',
+    icon: 'verified',
+    color: '#B91C1C', // accent-gunmen
+    bgColor: '#ffffff',
     description: 'Armed security personnel',
     matchFn: (n) => ['Gunman', 'Rifleman', 'PSO'].includes(n),
   },
   {
     id: 'bouncers',
     name: 'Bouncers',
-    icon: 'sports-mma',
-    color: '#3C1361',
-    bgColor: 'rgba(60,19,97,0.08)',
+    icon: 'groups',
+    color: '#581C87', // accent-bouncers
+    bgColor: '#ffffff',
     description: 'Event & venue security',
     matchFn: (n) => n === 'Bouncer',
   },
   {
     id: 'helpers',
     name: 'Helpers',
-    icon: 'cleaning-services',
-    color: '#E65100',
-    bgColor: 'rgba(230,81,0,0.08)',
-    description: 'Facility maintenance & support staff',
+    icon: 'home',
+    color: '#C2410C', // accent-helpers
+    bgColor: '#ffffff',
+    description: 'Facility maintenance & support',
     matchFn: (n) => !['Guard', 'Supervisor', 'Security Officer', 'Gunman', 'Rifleman', 'PSO', 'Bouncer'].includes(n),
   },
 ];
@@ -89,6 +89,7 @@ function SubcategoryCard({
   onToggleAttendance,
   isUpdating,
 }: {
+  key?: React.Key;
   category: WorkforceCategory;
   onEdit: () => void;
   onDelete: () => void;
@@ -189,31 +190,33 @@ function MajorGroupCard({
 
   const chevronRotation = spinAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
+    outputRange: ['0deg', '90deg'],
   });
 
   return (
-    <View style={s.groupCard}>
+    <View style={[s.groupCard, { borderLeftColor: group.color }]}>
       {/* Major Group Header */}
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={onToggleExpand}
         style={s.groupHeader}
       >
-        <View style={[s.groupIconWrapper, { backgroundColor: group.bgColor }]}>
+        <View style={s.groupIconWrapper}>
           <MaterialIcons name={group.icon as any} size={24} color={group.color} />
         </View>
 
         <View style={s.groupInfo}>
-          <Text style={[s.groupName, { color: group.color }]}>{group.name}</Text>
+          <Text style={[s.groupName, { color: group.id === 'guards' ? '#002752' : '#0f172a' }]}>{group.name}</Text>
           <Text style={s.groupDescription}>{group.description}</Text>
-          <Text style={s.subCount}>
-            {subcategories.length} subcategor{subcategories.length !== 1 ? 'ies' : 'y'}
-          </Text>
+          <View style={s.subCountBadge}>
+            <Text style={[s.subCountBadgeText, { color: group.color }]}>
+              {subcategories.length} subcategor{subcategories.length !== 1 ? 'ies' : 'y'}
+            </Text>
+          </View>
         </View>
 
         <Animated.View style={{ transform: [{ rotate: chevronRotation }] }}>
-          <MaterialIcons name="keyboard-arrow-down" size={28} color={Colors.onSurfaceVariant} />
+          <MaterialIcons name="chevron-right" size={24} color="#94a3b8" />
         </Animated.View>
       </TouchableOpacity>
 
@@ -350,74 +353,87 @@ export default function WorkforceCategoryListScreen({ navigation }: WorkforceCat
   const totalCategories = categories.length;
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(insets.top, 16) }]}>
+    <View style={s.container}>
       {/* Header */}
-      <View style={s.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={s.backButton}
-          accessibilityLabel="Go back"
-        >
-          <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Workforce Categories</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('AddWorkforceCategory')}
-          style={s.addButton}
-          accessibilityLabel="Add custom category"
-        >
-          <MaterialIcons name="add" size={24} color={Colors.primary} />
-        </TouchableOpacity>
+      <View style={[s.header, { paddingTop: Math.max(insets.top, 16) }]}>
+        <View style={s.headerInner}>
+          <View style={s.headerCenter}>
+            <View style={s.logoBox}>
+              <MaterialIcons name="shield" size={20} color="#ffffff" />
+            </View>
+            <Text style={s.headerTitle}>Workforce</Text>
+          </View>
+          
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={s.absoluteBtnLeft}
+            accessibilityLabel="Go back"
+          >
+            <MaterialIcons name="chevron-left" size={28} color="#000" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={() => navigation.navigate('AddWorkforceCategory')}
+            style={s.absoluteBtnRight}
+            accessibilityLabel="Add custom category"
+          >
+            <MaterialIcons name="add" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Summary Bar */}
-      {!loading && (
-        <View style={s.summaryBar}>
-          <View style={s.summaryChip}>
-            <MaterialIcons name="category" size={16} color={Colors.primary} />
-            <Text style={s.summaryText}>
-              {MAJOR_GROUPS.length} Major Groups • {totalCategories} Total Subcategories
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Body */}
-      {loading ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={s.loadingText}>Loading categories...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={groupedCategories}
-          keyExtractor={(item) => item.group.id}
-          renderItem={({ item }) => (
-            <MajorGroupCard
-              group={item.group}
-              subcategories={item.subcategories}
-              isExpanded={expandedGroupId === item.group.id}
-              onToggleExpand={() => handleToggleExpand(item.group.id)}
-              onEditCategory={handleEditCategory}
-              onDeleteCategory={handleDeleteCategory}
-              onToggleAttendance={handleToggleAttendance}
-              updatingId={updatingId}
-            />
-          )}
-          contentContainerStyle={[
-            s.list,
-            { paddingBottom: Math.max(insets.bottom, 16) + 16 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[Colors.primary]}
-            />
-          }
-        />
-      )}
+      <FlatList
+        data={groupedCategories}
+        keyExtractor={(item) => item.group.id}
+        ListHeaderComponent={
+          !loading ? (
+            <View style={s.summaryCardContainer}>
+              <View style={s.summaryCard}>
+                <View style={s.summaryCol1}>
+                  <Text style={s.summaryLabel}>Total Categories</Text>
+                  <Text style={s.summaryValue}>{MAJOR_GROUPS.length}</Text>
+                </View>
+                <View style={s.summaryCol2}>
+                  <Text style={s.summaryLabel}>Total Subcategories</Text>
+                  <Text style={s.summaryValue}>{totalCategories}</Text>
+                </View>
+              </View>
+            </View>
+          ) : null
+        }
+        renderItem={({ item }) => (
+          <MajorGroupCard
+            group={item.group}
+            subcategories={item.subcategories}
+            isExpanded={expandedGroupId === item.group.id}
+            onToggleExpand={() => handleToggleExpand(item.group.id)}
+            onEditCategory={handleEditCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onToggleAttendance={handleToggleAttendance}
+            updatingId={updatingId}
+          />
+        )}
+        contentContainerStyle={[
+          s.list,
+          { paddingBottom: Math.max(insets.bottom, 16) + 16 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#002752']}
+          />
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={s.center}>
+              <ActivityIndicator size="large" color="#002752" />
+              <Text style={s.loadingText}>Loading categories...</Text>
+            </View>
+          ) : null
+        }
+      />
     </View>
   );
 }
@@ -425,56 +441,97 @@ export default function WorkforceCategoryListScreen({ navigation }: WorkforceCat
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#faf9fd',
   },
+  
+  // ── Header ──
   header: {
-    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0', // slate-200
+  },
+  headerInner: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.screenPadding,
-    paddingVertical: 12,
+    paddingVertical: 16,
   },
-  backButton: {
-    padding: 8,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.surfaceContainerLow,
+  headerCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  addButton: {
-    padding: 8,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.surfaceContainerLow,
+  logoBox: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#002752',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   headerTitle: {
-    ...Typography.h2,
-    color: Colors.onBackground,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: '#002752',
+    textTransform: 'uppercase',
+  },
+  absoluteBtnLeft: {
+    position: 'absolute',
+    left: 16,
+    height: '100%',
+    justifyContent: 'center',
+    padding: 8, // increase hit area
+  },
+  absoluteBtnRight: {
+    position: 'absolute',
+    right: 16,
+    height: '100%',
+    justifyContent: 'center',
+    padding: 8, // increase hit area
   },
 
-  // ── Summary Bar ──
-  summaryBar: {
-    paddingHorizontal: Spacing.screenPadding,
-    paddingBottom: 8,
+  // ── Summary Card ──
+  summaryCardContainer: {
+    paddingBottom: 24,
   },
-  summaryChip: {
+  summaryCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primaryFixed,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.xl,
-    gap: 8,
+    backgroundColor: '#002752',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#1e3a8a', // blue-900 shadow
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  summaryText: {
-    fontSize: 13,
+  summaryCol1: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  summaryCol2: {
+    flex: 1,
+    paddingLeft: 16,
+  },
+  summaryLabel: {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '600',
+  },
+  summaryValue: {
+    fontSize: 24,
     fontWeight: '700',
-    color: Colors.onPrimaryFixedVariant,
+    color: '#ffffff',
+    marginTop: 4,
   },
 
   // ── Center / Loading / Empty ──
   center: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 48,
   },
   loadingText: {
     ...Typography.body,
@@ -484,20 +541,23 @@ const styles = StyleSheet.create({
 
   // ── List ──
   list: {
-    padding: Spacing.screenPadding,
+    padding: 16,
   },
 
   // ── Major Group Card ──
   groupCard: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: BorderRadius.xl,
+    backgroundColor: '#f4f3f7', // surface-container
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
+    borderLeftWidth: 4,
+    flexDirection: 'column',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 2,
     overflow: 'hidden',
   },
@@ -505,43 +565,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    gap: 14,
   },
   groupIconWrapper: {
     width: 48,
     height: 48,
-    borderRadius: BorderRadius.lg,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   groupInfo: {
     flex: 1,
   },
   groupName: {
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    fontSize: 16,
+    fontWeight: '700',
   },
   groupDescription: {
     fontSize: 12,
-    color: Colors.onSurfaceVariant,
+    color: '#64748b', // slate-500
+    fontWeight: '500',
     marginTop: 2,
   },
-  subCount: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.outline,
+  subCountBadge: {
     marginTop: 4,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  subCountBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
 
   // ── Expanded Subcategory List ──
   subList: {
     borderTopWidth: 1,
-    borderTopColor: Colors.outlineVariant,
+    borderTopColor: '#e2e8f0', // slate-200
     paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 8,
-    backgroundColor: Colors.surfaceContainerLow,
+    backgroundColor: '#faf9fd',
   },
   emptySubState: {
     flexDirection: 'row',

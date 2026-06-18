@@ -139,7 +139,7 @@ export default function GuardSalarySlipDetailScreen({
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F4F4F9" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.header, { paddingTop: insets.top }]}>

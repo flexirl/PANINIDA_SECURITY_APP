@@ -75,7 +75,7 @@ export default function GuardVisitorLogScreen({ navigation }: { navigation: any 
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
       
       <View style={[s.topBar, { height: 60 + insets.top, paddingTop: insets.top }]}>
         <View style={s.topBarInner}>

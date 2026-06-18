@@ -12,6 +12,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  AppState,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
@@ -68,6 +69,7 @@ interface PersonnelProfile {
   photo_url?: string;
   base_salary: number;
   shift_type?: string;
+  attendance_required?: boolean;
 }
 
 interface AttendanceStat {
@@ -142,23 +144,43 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
 
   const personnelId = user?.guard_id || (user as any)?.workforce_personnel_id;
 
-  const loadData = async () => {
+  // Resolve the personnel ID robustly – works even if user hasn't loaded yet
+  const resolvePersonnelId = async (): Promise<{ personnelId: string; currentUser: any } | null> => {
     try {
       const freshProfile = await refreshProfile();
       const currentUser = freshProfile || user;
-      const currentPersonnelId = currentUser?.guard_id || (currentUser as any)?.workforce_personnel_id;
+      const pid = currentUser?.guard_id || (currentUser as any)?.workforce_personnel_id;
+      if (pid) return { personnelId: pid, currentUser };
+    } catch (err) {
+      console.warn('[PersonnelDashboard] refreshProfile failed, using cached user:', err);
+    }
 
-      if (!currentPersonnelId) {
+    // Fallback: if refreshProfile bails (e.g. user?.id is null on first mount),
+    // try the current user object directly
+    const pid = user?.guard_id || (user as any)?.workforce_personnel_id;
+    if (pid) return { personnelId: pid, currentUser: user };
+
+    return null;
+  };
+
+  const loadData = async () => {
+    try {
+      const resolved = await resolvePersonnelId();
+
+      if (!resolved) {
+        console.warn('[PersonnelDashboard] No personnelId found – skipping data load');
         setLoading(false);
         return;
       }
 
+      const { personnelId: currentPersonnelId, currentUser } = resolved;
+
       // 1. Personnel profile with category
       const { data: wp } = await supabase
         .from('workforce_personnel')
-        .select('id, name, employee_id, base_salary, shift_type, photo_url, category:workforce_categories(name)')
+        .select('id, name, employee_id, base_salary, shift_type, photo_url, category:workforce_categories(name, attendance_required)')
         .eq('id', currentPersonnelId)
-        .single();
+        .maybeSingle();
 
       if (wp) {
         setPersonnelProfile({
@@ -166,54 +188,63 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
           name: wp.name,
           employee_id: wp.employee_id,
           category_name: (wp.category as any)?.name || 'Staff',
+          attendance_required: (wp.category as any)?.attendance_required !== false,
           photo_url: wp.photo_url,
           base_salary: wp.base_salary,
           shift_type: wp.shift_type,
         });
       }
 
-      // 2. Current site assignment
+      // 2. Current site assignment – use maybeSingle to avoid error on 0 rows
+      let activeSiteId: string | null = null;
       try {
-        // Query the active assignment directly to ensure we have the latest
-        const { data: assignment } = await supabase
+        const { data: assignment, error: assignErr } = await supabase
           .from('site_assignments')
           .select('site_id')
           .eq('personnel_id', currentPersonnelId)
           .eq('is_active', true)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
-        const activeSiteId = assignment?.site_id || currentUser?.current_assignment?.site_id;
-        
-        if (activeSiteId) {
-          const site = await siteService.getSiteDetail(activeSiteId);
-          setSiteDetails(site);
-        } else {
-          setSiteDetails(null);
+        if (!assignErr && assignment?.site_id) {
+          activeSiteId = assignment.site_id;
         }
       } catch (err) {
-        console.warn('Could not fetch site assignment:', err);
-        // Fallback to user profile assignment if direct query fails
-        if (currentUser?.current_assignment?.site_id) {
-          try {
-            const site = await siteService.getSiteDetail(currentUser.current_assignment.site_id);
-            setSiteDetails(site);
-          } catch {}
-        }
+        console.warn('[PersonnelDashboard] site_assignments query failed:', err);
       }
 
-      // 3. Today's attendance
+      // Fallback: use the assignment from the user profile if direct query found nothing
+      if (!activeSiteId && currentUser?.current_assignment?.site_id) {
+        activeSiteId = currentUser.current_assignment.site_id;
+      }
+
+      if (activeSiteId) {
+        try {
+          const site = await siteService.getSiteDetail(activeSiteId);
+          setSiteDetails(site);
+        } catch (siteErr) {
+          console.warn('[PersonnelDashboard] Failed to fetch site detail for', activeSiteId, siteErr);
+          setSiteDetails(null);
+        }
+      } else {
+        setSiteDetails(null);
+      }
+
+      // 3. Today's attendance – use maybeSingle so 0 rows returns null instead of throwing
       const todayStr = new Date().toISOString().split('T')[0];
-      const { data: todayAtt } = await supabase
+      const { data: todayAtt, error: todayErr } = await supabase
         .from('workforce_attendance')
         .select('id, check_in_time, check_out_time, status')
         .eq('personnel_id', currentPersonnelId)
         .eq('attendance_date', todayStr)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
+      if (todayErr) {
+        console.warn('[PersonnelDashboard] Today attendance query error:', todayErr.message);
+      }
       setTodayRecord(todayAtt || null);
 
       // 4. Monthly attendance stats
@@ -251,7 +282,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
         });
       }
 
-      // 6. Recent activity (last 5 attendance records + recent notifications)
+      // 6. Recent activity (last 5 attendance records)
       const { data: recentAtt } = await supabase
         .from('workforce_attendance')
         .select('id, attendance_date, check_in_time, check_out_time, status')
@@ -294,18 +325,57 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
       setRecentActivity(activities.slice(0, 5));
 
     } catch (err) {
-      console.error('Error loading personnel dashboard:', err);
+      console.error('[PersonnelDashboard] Error loading data:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Re-fetch data EVERY time this screen gains focus (e.g. after check-in/check-out)
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [user?.id])
   );
+
+  // Subscribe to realtime attendance changes for instant button updates
+  useEffect(() => {
+    const pid = user?.guard_id || (user as any)?.workforce_personnel_id;
+    if (!pid) return;
+
+    const channel = supabase
+      .channel(`personnel-attendance-${pid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workforce_attendance',
+          filter: `personnel_id=eq.${pid}`,
+        },
+        (payload: any) => {
+          console.log('[PersonnelDashboard] Realtime attendance update:', payload.eventType);
+          // Refresh attendance data on any insert or update
+          loadData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  // Also refresh when app comes back to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadData();
+      }
+    });
+    return () => subscription.remove();
+  }, [user?.id]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -322,8 +392,9 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
     ? Math.round((personnelProfile.base_salary / 26) * attendanceStats.present)
     : 0;
 
-  let checkInStatus: 'not_checked_in' | 'checked_in' | 'shift_complete' = 'not_checked_in';
-  if (todayRecord?.check_out_time) checkInStatus = 'shift_complete';
+  let checkInStatus: 'not_checked_in' | 'checked_in' | 'shift_complete' | 'not_required' = 'not_checked_in';
+  if (personnelProfile && personnelProfile.attendance_required === false) checkInStatus = 'not_required';
+  else if (todayRecord?.check_out_time) checkInStatus = 'shift_complete';
   else if (todayRecord?.check_in_time) checkInStatus = 'checked_in';
 
   // ── Bottom Nav ──────────────────────────────────────────────
@@ -344,7 +415,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
   if (loading && !refreshing) {
     return (
       <View style={s.loadingContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={s.loadingText}>Loading your dashboard... / आपका डैशबोर्ड लोड हो रहा है...</Text>
       </View>
@@ -353,7 +424,7 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -443,12 +514,12 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
             activeOpacity={0.9}
             style={[
               s.checkInBtn,
-              checkInStatus === 'shift_complete' && s.checkInBtnDisabled,
+              (checkInStatus === 'shift_complete' || checkInStatus === 'not_required') && s.checkInBtnDisabled,
               checkInStatus === 'checked_in' && s.checkInBtnActive,
               checkInStatus === 'not_checked_in' && s.checkInBtnInactive,
             ]}
             onPress={() => navigation.navigate('GuardAttendance')}
-            disabled={checkInStatus === 'shift_complete'}
+            disabled={checkInStatus === 'shift_complete' || checkInStatus === 'not_required'}
           >
             <MaterialIcons
               name={
@@ -456,6 +527,8 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
                   ? 'check-circle'
                   : checkInStatus === 'checked_in'
                   ? 'check-circle'
+                  : checkInStatus === 'not_required'
+                  ? 'do-not-disturb-alt'
                   : 'login'
               }
               size={22}
@@ -466,6 +539,8 @@ export default function PersonnelDashboardScreen({ navigation }: { navigation: a
                 ? 'SHIFT COMPLETE / पाली समाप्त'
                 : checkInStatus === 'checked_in'
                 ? `CHECKED IN / उपस्थित • ${todayRecord?.check_in_time ? formatTime12(todayRecord.check_in_time) : ''}`
+                : checkInStatus === 'not_required'
+                ? 'ATTENDANCE NOT REQUIRED'
                 : 'CHECK IN NOW / उपस्थिति दर्ज करें'}
             </Text>
           </TouchableOpacity>

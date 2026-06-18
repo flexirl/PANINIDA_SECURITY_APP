@@ -329,11 +329,11 @@ export default function AddGuardScreen({ navigation }: AddGuardScreenProps) {
 
       // Upload documents to Supabase Storage if guard was created and we have files
       if (guardId) {
-        const uploadTasks: { type: 'photo' | 'aadhaar' | 'police_verification'; uri: string; name: string }[] = [];
+        const uploadTasks: { type: 'photo' | 'aadhaar_front' | 'aadhaar_back' | 'police_verification'; uri: string; name: string }[] = [];
 
         if (docs.photo) uploadTasks.push({ type: 'photo', uri: docs.photo, name: 'profile_photo.jpg' });
-        if (docs.aadhaarFront) uploadTasks.push({ type: 'aadhaar', uri: docs.aadhaarFront, name: 'aadhaar_front.jpg' });
-        if (docs.aadhaarBack) uploadTasks.push({ type: 'aadhaar', uri: docs.aadhaarBack, name: 'aadhaar_back.jpg' });
+        if (docs.aadhaarFront) uploadTasks.push({ type: 'aadhaar_front', uri: docs.aadhaarFront, name: 'aadhaar_front.jpg' });
+        if (docs.aadhaarBack) uploadTasks.push({ type: 'aadhaar_back', uri: docs.aadhaarBack, name: 'aadhaar_back.jpg' });
         if (docs.pvr) uploadTasks.push({ type: 'police_verification', uri: docs.pvr, name: 'pvr_certificate.jpg' });
 
         for (const task of uploadTasks) {
@@ -444,7 +444,7 @@ export default function AddGuardScreen({ navigation }: AddGuardScreenProps) {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
         {/* ═══ Top App Bar ═══ */}
         <View style={[s.topBar, { paddingTop: insets.top, height: 60 + insets.top }]}>

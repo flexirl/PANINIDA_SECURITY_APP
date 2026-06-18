@@ -57,6 +57,14 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     requiresRef: null,                     // attendance_id set post-upload
     allowedRoles: ["admin", "manager", "guard", "workforce_personnel"],
   },
+  inspections: {
+    bucket: "inspection-photos",
+    maxSizeBytes: 5 * 1024 * 1024,        // 5MB
+    allowedMimeTypes: ["image/jpeg", "image/png"],
+    isPublic: true,
+    requiresRef: null,
+    allowedRoles: ["admin", "manager", "supervisor", "inspector"],
+  },
 };
 
 // ─── Error Codes (Req 14) ───

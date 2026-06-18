@@ -29,6 +29,7 @@ import * as siteService from '../api/siteService';
 import * as attendanceService from '../api/attendanceService';
 import * as payrollService from '../api/payrollService';
 import * as uniformService from '../api/uniformService';
+import SuccessModal from '../components/SuccessModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -150,7 +151,7 @@ function ProfileTab({ guard }: { guard: guardService.GuardProfile }) {
           <Text style={[s.infoCardTitle, { flex: 1 }]}>Uploaded Documents</Text>
           <View style={s.verifiedBadge}>
             <Text style={s.verifiedText}>
-              {guard.guard_documents?.filter(d => ['aadhaar', 'address_proof', 'police_verification', 'photo'].includes(d.document_type)).length || 0}/4 Verified
+              {guard.guard_documents?.filter(d => ['aadhaar', 'aadhaar_front', 'aadhaar_back', 'address_proof', 'police_verification', 'photo'].includes(d.document_type)).length || 0}/4 Verified
             </Text>
           </View>
         </View>
@@ -158,14 +159,14 @@ function ProfileTab({ guard }: { guard: guardService.GuardProfile }) {
         <View style={{ gap: 10 }}>
           {(() => {
             const requiredDocs = [
-              { key: 'aadhaar', title: 'Aadhaar Front', icon: 'badge' },
-              { key: 'address_proof', title: 'Aadhaar Back', icon: 'badge' },
-              { key: 'police_verification', title: 'PVR', icon: 'verified-user' },
-              { key: 'photo', title: 'Profile Photo', icon: 'person' },
+              { key: 'aadhaar_front', fallbackKey: 'aadhaar', title: 'Aadhaar Front', icon: 'badge' },
+              { key: 'aadhaar_back', fallbackKey: 'address_proof', title: 'Aadhaar Back', icon: 'badge' },
+              { key: 'police_verification', fallbackKey: undefined, title: 'PVR', icon: 'verified-user' },
+              { key: 'photo', fallbackKey: undefined, title: 'Profile Photo', icon: 'person' },
             ];
 
             return requiredDocs.map((req) => {
-              const doc = guard.guard_documents?.find(d => d.document_type === req.key);
+              const doc = guard.guard_documents?.find(d => d.document_type === req.key) || (req.fallbackKey ? guard.guard_documents?.find(d => d.document_type === req.fallbackKey) : undefined);
               const isUploaded = !!doc;
               const uploadDate = doc?.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
               const url = doc?.document_url;
@@ -269,6 +270,9 @@ function UniformTab({ guard, onUniformAdded }: { guard: guardService.GuardProfil
   const [remarksInput, setRemarksInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showItemPicker, setShowItemPicker] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   useEffect(() => {
     Animated.timing(fadeIn, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -303,7 +307,9 @@ function UniformTab({ guard, onUniformAdded }: { guard: guardService.GuardProfil
         remarks: remarksInput || undefined,
       });
       setIssueModalVisible(false);
-      Alert.alert('Success', 'Uniform detail has been added successfully.');
+      setSuccessMessage('Uniform detail has been added successfully.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       onUniformAdded?.();
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to add uniform detail. Please try again.');
@@ -525,6 +531,12 @@ function UniformTab({ guard, onUniformAdded }: { guard: guardService.GuardProfil
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </Animated.View>
   );
 }
@@ -785,6 +797,9 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
   const [salarySlips, setSalarySlips] = useState<payrollService.PayrollRecord[]>([]);
 
   const [activeTab, setActiveTab] = useState<TabKey>('profile');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-20)).current;
@@ -866,7 +881,9 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
             setLoading(true);
             try {
               await siteService.unassignGuard(assignment.id);
-              Alert.alert('Success', 'Guard unassigned successfully.');
+              setSuccessMessage('Guard unassigned successfully.');
+              setOnSuccessClose(() => () => {});
+              setShowSuccessModal(true);
               loadGuardDetails();
             } catch (err: any) {
               setLoading(false);
@@ -907,7 +924,9 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
             setLoading(true);
             try {
               await guardService.updateGuard(guard.id, { employment_status: 'inactive' });
-              Alert.alert('Deactivated', 'Officer profile is now deactivated.');
+              setSuccessMessage('Officer profile is now deactivated.');
+              setOnSuccessClose(() => () => {});
+              setShowSuccessModal(true);
               loadGuardDetails();
             } catch (err: any) {
               setLoading(false);
@@ -953,7 +972,7 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
   if (loading && !refreshing) {
     return (
       <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         {/* Top Bar Skeleton */}
         <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
           <View style={s.topBarInner}>
@@ -1038,7 +1057,7 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -1153,6 +1172,12 @@ export default function GuardDetailScreen({ navigation, route }: GuardDetailScre
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

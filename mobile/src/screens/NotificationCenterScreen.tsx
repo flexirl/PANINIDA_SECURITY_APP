@@ -7,110 +7,64 @@ import {
   TouchableOpacity,
   StatusBar,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
+import { useNotifications } from '../context/NotificationContext';
 
-interface NotificationItem {
-  id: string;
-  title: string;
-  body: string;
-  time: string;
-  icon: string;
-  read: boolean;
-}
+const getIconForType = (type: string) => {
+  switch (type) {
+    case 'shift_reminder': return 'schedule';
+    case 'attendance_alert': return 'access-time';
+    case 'salary_generated': return 'payments';
+    case 'inspection_reminder': return 'fact-check';
+    case 'recruitment_update': return 'group-add';
+    case 'complaint_raised': return 'report-problem';
+    case 'complaint_escalated_l2': return 'trending-up';
+    case 'complaint_escalated_l3': return 'warning';
+    case 'replacement_assigned': return 'person-add';
+    case 'vacancy_escalated': return 'alarm-on';
+    default: return 'notifications';
+  }
+};
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: '1',
-    title: 'Shift Reminder',
-    body: 'Upcoming shift at Tech Park North Tower starting in 30 minutes. Please ensure your uniform is ready for duty.',
-    time: '2m ago',
-    icon: 'schedule',
-    read: false,
-  },
-  {
-    id: '2',
-    title: 'Attendance Verified',
-    body: 'Your attendance for Site A-12 has been successfully verified by Operations Manager.',
-    time: '45m ago',
-    icon: 'check-circle',
-    read: false,
-  },
-  {
-    id: '3',
-    title: 'Shift Ended',
-    body: 'You have successfully completed your 8-hour shift at Global Plaza. Thank you for your service.',
-    time: 'Yesterday',
-    icon: 'schedule',
-    read: true,
-  },
-  {
-    id: '4',
-    title: 'System Update',
-    body: 'The security management portal has been updated to v2.4.0 with new biometric reporting features.',
-    time: 'Oct 12',
-    icon: 'security',
-    read: true,
-  },
-];
+const formatTime = (isoString: string) => {
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 export default function NotificationCenterScreen({ navigation }: { navigation: any }) {
   const s = useScaledStyles(styles);
   const insets = useSafeAreaInsets();
   const { getLabel } = usePersonnelCategory();
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [listOpacity] = useState(new Animated.Value(1));
-  const [emptyStateOpacity] = useState(new Animated.Value(0));
-  const [showEmptyState, setShowEmptyState] = useState(false);
 
-  const hasUnread = notifications.some((n) => !n.read);
+  const { notifications, unreadCount, markAsRead, markAllAsRead, refreshNotifications, isLoading } = useNotifications();
+
+  const [listOpacity] = useState(new Animated.Value(1));
 
   const handleMarkAllRead = () => {
-    // Fade out list
-    Animated.timing(listOpacity, {
-      toValue: 0,
-      duration: 350,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowEmptyState(true);
-      // Mark all read in data
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      // Fade in empty state
-      Animated.timing(emptyStateOpacity, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }).start();
-    });
+    markAllAsRead();
   };
 
   const handleItemPress = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    markAsRead(id);
   };
 
   const handleRefreshFeed = () => {
-    // Fade out empty state
-    Animated.timing(emptyStateOpacity, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowEmptyState(false);
-      // Reset notifications to initial state
-      setNotifications(INITIAL_NOTIFICATIONS);
-      // Fade in list
-      Animated.timing(listOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    });
+    refreshNotifications();
   };
 
   const handleNavPress = (key: string) => {
@@ -134,7 +88,7 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -152,7 +106,7 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
               Notifications
             </Text>
           </View>
-          {hasUnread && !showEmptyState && (
+          {unreadCount > 0 && notifications.length > 0 && (
             <TouchableOpacity activeOpacity={0.7} onPress={handleMarkAllRead}>
               <Text style={s.markReadText}>MARK ALL READ</Text>
             </TouchableOpacity>
@@ -165,10 +119,14 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {!showEmptyState ? (
+        {isLoading && notifications.length === 0 ? (
+          <View style={s.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : notifications.length > 0 ? (
           <Animated.View style={[s.listContainer, { opacity: listOpacity }]}>
             {notifications.map((item) => {
-              const isUnread = !item.read;
+              const isUnread = !item.is_read;
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -190,7 +148,7 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
                     ]}
                   >
                     <MaterialIcons
-                      name={item.icon as any}
+                      name={getIconForType(item.type) as any}
                       size={22}
                       color={isUnread ? Colors.primary : Colors.outline}
                     />
@@ -207,7 +165,7 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
                       >
                         {item.title}
                       </Text>
-                      <Text style={s.itemTime}>{item.time}</Text>
+                      <Text style={s.itemTime}>{formatTime(item.created_at)}</Text>
                     </View>
                     <Text
                       style={[
@@ -224,7 +182,7 @@ export default function NotificationCenterScreen({ navigation }: { navigation: a
             })}
           </Animated.View>
         ) : (
-          <Animated.View style={[s.emptyState, { opacity: emptyStateOpacity }]}>
+          <Animated.View style={s.emptyState}>
             <View style={s.emptyIconCircle}>
               <MaterialIcons name="notifications-off" size={48} color={Colors.outline} />
             </View>
@@ -319,6 +277,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.screenPadding,
     paddingTop: Spacing.stackMd,
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
   },
   listContainer: {
     gap: 12,

@@ -17,6 +17,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import * as dashboardService from '../api/dashboardService';
 import * as attendanceService from '../api/attendanceService';
+import { supabase } from '../api/supabase';
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -71,10 +72,15 @@ export default function RealTimeAttendanceScreen({ navigation }: RealTimeAttenda
         const d2 = new Date(); d2.setDate(d2.getDate() - 2);
         const day2Str = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}-${String(d2.getDate()).padStart(2, '0')}`;
 
-        const [allAttendanceRecords, day1Records, day2Records] = await Promise.all([
+        const [allAttendanceRecords, day1Records, day2Records, locationPings] = await Promise.all([
           attendanceService.getAttendance({ date: todayStr }).catch(() => []),
           attendanceService.getAttendance({ date: day1Str }).catch(() => []),
-          attendanceService.getAttendance({ date: day2Str }).catch(() => [])
+          attendanceService.getAttendance({ date: day2Str }).catch(() => []),
+          supabase.from('attendance_location_pings')
+            .select(`*, personnel:workforce_personnel(name), site:sites(site_name)`)
+            .gte('created_at', `${todayStr}T00:00:00.000Z`)
+            .order('created_at', { ascending: false })
+            .then(res => res.data || []).catch(() => [])
         ]);
         
         let presentCount = 0;
@@ -192,6 +198,28 @@ export default function RealTimeAttendanceScreen({ navigation }: RealTimeAttenda
           }
         });
 
+        // Process location pings
+        locationPings.forEach((ping: any) => {
+          const guardName = ping.personnel?.name || 'Unknown Guard';
+          const siteName = ping.site?.site_name || 'Unknown Site';
+          const formatTime = (t: string) => {
+            try {
+              return new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+            } catch (e) { return 'Unknown'; }
+          };
+          mappedFeed.push({
+            id: `ping_${ping.id}`,
+            name: guardName,
+            role: 'SECURITY PERSONNEL',
+            site: `📍 ${siteName}`,
+            rawTime: new Date(ping.created_at).getTime(),
+            time: formatTime(ping.created_at),
+            status: 'LOCATION PING',
+            avatar: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(guardName) + '&background=random',
+            statusColor: '#3B82F6',
+          });
+        });
+
         const total = overviewData.guards?.total || 1;
         setStats({
           present: presentCount,
@@ -219,7 +247,7 @@ export default function RealTimeAttendanceScreen({ navigation }: RealTimeAttenda
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
       
       {/* ═══ Top App Bar ═══ */}
       <View style={s.topBar}>

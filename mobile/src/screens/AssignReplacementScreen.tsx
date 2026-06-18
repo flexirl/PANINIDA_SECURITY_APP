@@ -15,6 +15,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getAvailableReplacementPersonnel, assignReplacement } from '../api/replacementService';
 import CategoryBadge from '../components/CategoryBadge';
+import SuccessModal from '../components/SuccessModal';
 
 export default function AssignReplacementScreen({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -27,6 +28,9 @@ export default function AssignReplacementScreen({ route, navigation }: any) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const loadData = async () => {
     try {
@@ -64,13 +68,15 @@ export default function AssignReplacementScreen({ route, navigation }: any) {
             try {
               setSubmitting(true);
               await assignReplacement(replacementId, selectedStaffId);
-              Alert.alert('Success', 'Replacement staff assigned successfully.');
               
-              // Trigger reload in the parent screen and go back
-              if (route.params?.onRefresh) {
-                route.params.onRefresh();
-              }
-              navigation.goBack();
+              setSuccessMessage('Replacement staff assigned successfully.');
+              setOnSuccessClose(() => () => {
+                if (route.params?.onRefresh) {
+                  route.params.onRefresh();
+                }
+                navigation.goBack();
+              });
+              setShowSuccessModal(true);
             } catch (err: any) {
               Alert.alert('Assignment Failed', err.message || 'Could not complete assignment');
             } finally {
@@ -179,6 +185,12 @@ export default function AssignReplacementScreen({ route, navigation }: any) {
           </TouchableOpacity>
         </View>
       )}
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

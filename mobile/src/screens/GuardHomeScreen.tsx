@@ -187,7 +187,7 @@ export default function GuardHomeScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>

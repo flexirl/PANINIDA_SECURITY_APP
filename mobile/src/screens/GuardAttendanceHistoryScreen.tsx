@@ -361,7 +361,7 @@ export default function GuardAttendanceHistoryScreen({ navigation }: { navigatio
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top Navigation Bar consistent with Attendance/Dashboard ═══ */}
       <View style={[s.topBar, { height: 60 + insets.top, paddingTop: insets.top }]}>

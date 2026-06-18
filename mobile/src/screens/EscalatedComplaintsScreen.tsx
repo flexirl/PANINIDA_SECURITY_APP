@@ -17,6 +17,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { getEscalatedComplaints } from '../api/operationsService';
 import { resolveComplaint } from '../api/complaintService';
+import SuccessModal from '../components/SuccessModal';
 import type { Complaint } from '../types/workforce';
 
 // Countdown Timer component for each complaint card
@@ -85,6 +86,9 @@ export default function EscalatedComplaintsScreen({ navigation }: any) {
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
   const [resolutionNote, setResolutionNote] = useState('');
   const [submittingResolve, setSubmittingResolve] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const fetchComplaints = async () => {
     try {
@@ -126,7 +130,9 @@ export default function EscalatedComplaintsScreen({ navigation }: any) {
     try {
       setSubmittingResolve(true);
       await resolveComplaint(selectedComplaintId, resolutionNote);
-      Alert.alert('Success', 'Complaint resolved successfully.');
+      setSuccessMessage('Complaint resolved successfully.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       setResolveModalVisible(false);
       fetchComplaints();
     } catch (err: any) {
@@ -305,6 +311,12 @@ export default function EscalatedComplaintsScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

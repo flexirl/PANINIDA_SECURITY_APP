@@ -125,7 +125,7 @@ export default function CandidateDetailScreen({ navigation, route }: CandidateDe
   if (loading) {
     return (
       <View style={s.container}>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+        <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
         {/* Top Bar Skeleton */}
         <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -316,7 +316,7 @@ export default function CandidateDetailScreen({ navigation, route }: CandidateDe
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar translucent barStyle="light-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>

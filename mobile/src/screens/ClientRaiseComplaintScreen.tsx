@@ -15,6 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { raiseComplaint } from '../api/complaintService';
 import ClientTopNav from '../components/ClientTopNav';
+import SuccessModal from '../components/SuccessModal';
 import type { ComplaintSeverity } from '../types/workforce';
 
 const CATEGORIES = [
@@ -37,6 +38,9 @@ export default function ClientRaiseComplaintScreen({ route, navigation }: any) {
   const [description, setDescription] = useState('');
   const [incidentReported, setIncidentReported] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const handleSubmit = async () => {
     if (!description.trim()) {
@@ -57,9 +61,9 @@ export default function ClientRaiseComplaintScreen({ route, navigation }: any) {
         severity,
         incident_reported: incidentReported,
       });
-      Alert.alert('Success', 'Complaint raised successfully. SLA is 24 hours.', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      setSuccessMessage('Complaint raised successfully. SLA is 24 hours.');
+      setOnSuccessClose(() => () => navigation.goBack());
+      setShowSuccessModal(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to raise complaint.');
     } finally {
@@ -173,6 +177,12 @@ export default function ClientRaiseComplaintScreen({ route, navigation }: any) {
           {!loading && <MaterialIcons name="send" size={20} color="#ffffff" />}
         </TouchableOpacity>
       </ScrollView>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </KeyboardAvoidingView>
   );
 }

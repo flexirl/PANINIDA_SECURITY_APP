@@ -58,14 +58,16 @@ export async function getDashboardOverview(categoryIds?: string[]): Promise<Dash
   if (categoryIds && categoryIds.length > 0) {
     activeAssignmentsQuery = supabase
       .from('site_assignments')
-      .select('id, personnel:workforce_personnel!inner(category_id)', { count: 'exact', head: true })
+      .select('id, personnel:workforce_personnel!inner(category_id, category:workforce_categories!inner(attendance_required))', { count: 'exact', head: true })
       .eq('is_active', true)
-      .in('personnel.category_id', categoryIds);
+      .in('personnel.category_id', categoryIds)
+      .eq('personnel.category.attendance_required', true);
   } else {
     activeAssignmentsQuery = supabase
       .from('site_assignments')
-      .select('id', { count: 'exact', head: true })
-      .eq('is_active', true);
+      .select('id, personnel:workforce_personnel!inner(category:workforce_categories!inner(attendance_required))', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .eq('personnel.category.attendance_required', true);
   }
 
   // 3. Today's Attendance Queries

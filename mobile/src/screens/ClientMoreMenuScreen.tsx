@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ClientTopNav from '../components/ClientTopNav';
 import ClientBottomNav from '../components/ClientBottomNav';
+import LogoutModal from '../components/LogoutModal';
 import { useAuth } from '../hooks/useAuth';
 
 export default function ClientMoreMenuScreen({ navigation }: any) {
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const { signOutUser } = useAuth();
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
     try {
       await signOutUser();
       navigation.reset({
@@ -89,6 +96,12 @@ export default function ClientMoreMenuScreen({ navigation }: any) {
       </ScrollView>
 
       <ClientBottomNav activeTab="more" />
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }

@@ -21,6 +21,7 @@ import { useAuth } from '../hooks/useAuth';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import { useFileUpload } from '../hooks/useFileUpload';
 import CachedImage from '../components/CachedImage';
+import LogoutModal from '../components/LogoutModal';
 
 export default function ProfileScreen({ navigation }: { navigation: any }) {
   const s = useScaledStyles(styles);
@@ -39,6 +40,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   const [avatar, setAvatar] = useState(
     'https://lh3.googleusercontent.com/aida-public/AB6AXuD_0DYqfWCCqQyglK94cmlyY65QjURQZnqvzhCI-kNOrwcWq2iOa9t5XZ4FGwy1gk3b0zTBjec770O5p4bKmaCXOteEABq8ZCHqhLT8ORHLvv6JEOPbZoWo7NcnB-IHh-PT1gs9sE1cuK9kndYAaNxoSECXrRdUMUIixoYLMzdPQF3vhhLU--vzBJtjvIGV-1-dUy1vDqr6XNmbL4Dci9rGdgR5YI8u5jOGLarTHD-HXhld5SubhQEh8NspBgydwjybYZLml0DDjOI'
   );
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -137,24 +139,20 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out of the Pan India Security application?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOutUser();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-          } catch (err: any) {
-            Alert.alert('Logout Error', err.message);
-          }
-        },
-      },
-    ]);
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
+    try {
+      await signOutUser();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (err: any) {
+      Alert.alert('Logout Error', err.message);
+    }
   };
 
   const handleSettingOption = (optionName: string) => {
@@ -182,7 +180,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -451,6 +449,12 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
           );
         })}
       </View>
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }

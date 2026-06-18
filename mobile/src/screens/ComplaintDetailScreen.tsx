@@ -18,6 +18,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import Skeleton from '../components/Skeleton';
 import { getComplaintById, addComment, resolveComplaint } from '../api/complaintService';
 import { supabase } from '../api/supabase';
+import SuccessModal from '../components/SuccessModal';
 import type { Complaint, ComplaintComment, UserRole } from '../types/workforce';
 
 interface ComplaintDetailScreenProps {
@@ -46,6 +47,9 @@ export default function ComplaintDetailScreen({ route, navigation }: ComplaintDe
   // Resolution Modal/Form
   const [resolving, setResolving] = useState(false);
   const [resolutionNote, setResolutionNote] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const loadData = async (silent = false) => {
     try {
@@ -87,7 +91,9 @@ export default function ComplaintDetailScreen({ route, navigation }: ComplaintDe
       await addComment(complaintId, commentText.trim(), actionTaken.trim() || undefined);
       setCommentText('');
       setActionTaken('');
-      Alert.alert('Success', 'Comment posted.');
+      setSuccessMessage('Comment posted.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       loadData(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to post comment.');
@@ -104,9 +110,11 @@ export default function ComplaintDetailScreen({ route, navigation }: ComplaintDe
     try {
       setSubmittingComment(true);
       await resolveComplaint(complaintId, resolutionNote.trim());
-      Alert.alert('Resolved', 'Complaint marked as resolved.');
       setResolving(false);
       setResolutionNote('');
+      setSuccessMessage('Complaint marked as resolved.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       loadData();
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to resolve complaint.');
@@ -338,6 +346,12 @@ export default function ComplaintDetailScreen({ route, navigation }: ComplaintDe
           )}
         </ScrollView>
       </View>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </KeyboardAvoidingView>
   );
 }

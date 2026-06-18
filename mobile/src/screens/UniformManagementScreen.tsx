@@ -23,11 +23,12 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 import { useScaledStyles } from '../context/FontSizeContext';
 import { usePersonnelCategory } from '../context/PersonnelCategoryContext';
 import * as uniformService from '../api/uniformService';
-import * as guardService from '../api/guardService';
+import * as workforcePersonnelService from '../api/workforcePersonnelService';
 
 interface UniformRecord {
   id: string;
   guardId: string;
+  guardCode: string;
   guardName: string;
   item: string;
   cost: number;
@@ -51,6 +52,7 @@ function mapToRecord(u: uniformService.UniformItem): UniformRecord {
   return {
     id: u.id,
     guardId: u.guard_id,
+    guardCode: (u as any).guards?.employee_id || u.guard_id.substring(0, 8).toUpperCase(),
     guardName: (u as any).guards?.users?.name || (u as any).guards?.name || 'Unknown',
     item: itemLabel,
     cost: u.item_cost,
@@ -74,7 +76,7 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   
   // Guard options for issue modal (fetched from backend)
-  const [guardOptions, setGuardOptions] = useState<{ id: string; name: string }[]>([]);
+  const [guardOptions, setGuardOptions] = useState<{ id: string; name: string; code: string }[]>([]);
   
   // Interaction modals
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -83,7 +85,7 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
   const [isFullPayment, setIsFullPayment] = useState(false);
 
   const [issueModalVisible, setIssueModalVisible] = useState(false);
-  const [selectedGuard, setSelectedGuard] = useState<{ id: string; name: string }>({ id: '', name: '' });
+  const [selectedGuard, setSelectedGuard] = useState<{ id: string; name: string; code: string }>({ id: '', name: '', code: '' });
   const [selectedItem, setSelectedItem] = useState('Uniform Set');
   const [costInput, setCostInput] = useState(String(ITEM_COSTS['Uniform Set']));
   const [remarksInput, setRemarksInput] = useState('');
@@ -95,14 +97,28 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
     try {
       if (isRefresh) setRefreshing(true); else setLoading(true);
       setError(null);
-      const [uniformsData, guardsData] = await Promise.all([
+      const [uniformsData, personnelData] = await Promise.all([
         uniformService.getUniformIssues(),
-        guardService.getGuards({ status: 'active' }),
+        workforcePersonnelService.getPersonnel({ status: 'active' }),
       ]);
-      setRecords(uniformsData.map(mapToRecord));
-      const opts = guardsData.map((g) => ({
-        id: g.id,
-        name: g.users?.name || g.name || 'Unknown',
+      
+      const codeMap = new Map<string, string>();
+      personnelData.forEach(p => {
+        if (p.employee_id) codeMap.set(p.id, p.employee_id);
+      });
+
+      setRecords(uniformsData.map(u => {
+        const rec = mapToRecord(u);
+        return {
+          ...rec,
+          guardCode: codeMap.get(u.guard_id) || rec.guardCode
+        };
+      }));
+      
+      const opts = personnelData.map((p) => ({
+        id: p.id,
+        name: p.name || 'Unknown',
+        code: p.employee_id || p.id.substring(0, 8).toUpperCase(),
       }));
       setGuardOptions(opts);
       if (opts.length > 0 && !selectedGuard.id) {
@@ -168,13 +184,14 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
 
   // Group records by guard
   const groupedRecords = useMemo(() => {
-    const groups: Record<string, { guardName: string; guardId: string; data: UniformRecord[] }> = {};
+    const groups: Record<string, { guardName: string; guardId: string; guardCode: string; data: UniformRecord[] }> = {};
     filteredRecords.forEach((rec) => {
       const key = `${rec.guardName}_${rec.guardId}`;
       if (!groups[key]) {
         groups[key] = {
           guardName: rec.guardName,
           guardId: rec.guardId,
+          guardCode: rec.guardCode,
           data: [],
         };
       }
@@ -291,10 +308,10 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
   const getItemIconName = (item: string) => {
     const lower = item.toLowerCase();
     if (lower.includes('uniform') || lower.includes('jacket') || lower.includes('shirt')) {
-      return 'apparel';
+      return 'checkroom';
     }
     if (lower.includes('shoe') || lower.includes('boot')) {
-      return 'ice-skating'; // closest footwear representation in standard package
+      return 'directions-walk'; 
     }
     if (lower.includes('id card') || lower.includes('badge')) {
       return 'badge';
@@ -303,14 +320,14 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
       return 'flashlight-on';
     }
     if (lower.includes('belt')) {
-      return 'remove';
+      return 'horizontal-rule';
     }
     return 'shield';
   };
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header ═══ */}
       <View style={[s.topBar, { height: 56 + insets.top, paddingTop: insets.top }]}>
@@ -331,12 +348,10 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
             <TouchableOpacity activeOpacity={0.7} style={s.topBarIconBtn}>
               <MaterialIcons name="search" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <View style={s.avatarSmall}>
-              <Image
-                source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDZGQQYMOnhjw24-o4h0v6-33nocj0vn9NBS8e_LqLsJevDxIyw2-JqOatBHqi1oKh8zaxYVVMvHZpZDZdPuS-MAMzfd86DwqUfDJpNENkrAbAhyj3VM4OS_cmReEGe9xMNzxEuQzxlaMKzhETyxlnEpqJLImco0PzhT-Q6fsLK9Lw9OqrClNaTNtjwlelBodKKT9sSE5Uk4zBzsTKNxcNNbuUJi2owu3geCbECqXzmewq7y2oT-AAXUQxf2OQmYRVJCVOJTBc6gZI' }}
-                style={s.avatarSmallImage}
-              />
-            </View>
+            <Image 
+              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCRyhUcTQWkIXJhYfiYHNsCWBHbHW-BmdKstBO-GTXBU8GREShei1cC7zxtCgfILG4L14WEnclS8-skHvaUwmfBQ24vnZwIANui91FPIfw-PStCPxGYhYTt873ArflucH4XT1zX_J3gx43ROSeEJ2bPa1gbSTw8c5bcrmEkC36obgQe0Z0Wrlq7ODX_WCNqg-PdCBxe4CZZO3KsClAQ_LGoGJO9p_2uEFwdrMeaMPyNxGYJvT2hzczjcUAt081W7V5pJAsvlwUnaF0' }} 
+              style={{ width: 40, height: 40, resizeMode: 'contain' }} 
+            />
           </View>
         </View>
       </View>
@@ -410,7 +425,7 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
             groupedRecords.map((group) => (
               <View key={`${group.guardName}_${group.guardId}`} style={s.groupContainer}>
                 <Text style={s.groupHeader}>
-                  Guard: {group.guardName} (ID: {group.guardId})
+                  GUARD: {group.guardName.toUpperCase()} (ID: {group.guardCode})
                 </Text>
                 <View style={s.groupCards}>
                   {group.data.map((record) => {
@@ -604,7 +619,7 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
                   onPress={() => setIsGuardDropdownVisible(true)}
                 >
                   <Text style={s.modalDropdownText}>
-                    {selectedGuard.name} ({selectedGuard.id})
+                    {selectedGuard.name} ({selectedGuard.code})
                   </Text>
                   <MaterialIcons name="arrow-drop-down" size={24} color={Colors.outline} />
                 </TouchableOpacity>
@@ -683,7 +698,7 @@ export default function UniformManagementScreen({ navigation }: { navigation: an
                           setIsGuardDropdownVisible(false);
                         }}
                       >
-                        <Text style={s.innerOptionText}>{item.name} ({item.id})</Text>
+                        <Text style={s.innerOptionText}>{item.name} ({item.code})</Text>
                       </TouchableOpacity>
                     )}
                   />

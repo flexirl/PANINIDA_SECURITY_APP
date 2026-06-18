@@ -24,6 +24,7 @@ import { supabase } from '../api/supabase';
 import AttendanceStatusBadge from '../components/AttendanceStatusBadge';
 import Skeleton from '../components/Skeleton';
 import CachedImage from '../components/CachedImage';
+import SuccessModal from '../components/SuccessModal';
 import type { WorkforcePersonnel, DocumentChecklistItem, WorkforceAttendance, SiteAssignment } from '../types/workforce';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useImageUrl } from '../utils/imageUtils';
@@ -72,6 +73,9 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerTitle, setViewerTitle] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
 
   const pickAndUpload = async (docType: string, useCamera: boolean) => {
     try {
@@ -124,7 +128,9 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
       });
 
       if (uploadRes.success) {
-        Alert.alert('Success / सफलता', 'Document uploaded successfully. / दस्तावेज़ सफलतापूर्वक अपलोड किया गया।');
+        setSuccessMessage('Document uploaded successfully. / दस्तावेज़ सफलतापूर्वक अपलोड किया गया।');
+        setOnSuccessClose(() => () => {});
+        setShowSuccessModal(true);
         loadData(true);
       } else {
         Alert.alert('Upload Failed / अपलोड विफल', uploadRes.error?.message || 'Could not save document. / दस्तावेज़ सहेज नहीं सके।');
@@ -187,7 +193,9 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
     try {
       setActionLoading(true);
       await verifyDocument(docId);
-      Alert.alert('Success', 'Document marked as verified.');
+      setSuccessMessage('Document marked as verified.');
+      setOnSuccessClose(() => () => {});
+      setShowSuccessModal(true);
       loadData(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to verify document.');
@@ -209,7 +217,9 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
             try {
               setActionLoading(true);
               await terminatePersonnel(personnelId);
-              Alert.alert('Success', 'Personnel profile terminated successfully.');
+              setSuccessMessage('Personnel profile terminated successfully.');
+              setOnSuccessClose(() => () => {});
+              setShowSuccessModal(true);
               loadData();
             } catch (err: any) {
               Alert.alert('Error', err?.message || 'Failed to terminate personnel.');
@@ -226,7 +236,7 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
   if (loading) {
     return (
       <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         {/* Top Bar Skeleton */}
         <View style={[s.topBar, { paddingTop: insets.top }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.topBarBtn}>
@@ -299,7 +309,7 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
   if (!personnel) {
     return (
       <View style={[s.container, s.centerFull]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+        <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
         <MaterialIcons name="person-off" size={64} color={Colors.surfaceDim} />
         <Text style={s.errorText}>Personnel profile not found.</Text>
         <TouchableOpacity style={s.goBackBtn} onPress={() => navigation.goBack()}>
@@ -329,7 +339,7 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surfaceContainerLowest} />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Top App Bar ═══ */}
       <View style={[s.topBar, { paddingTop: insets.top }]}>
@@ -811,6 +821,12 @@ export default function WorkforcePersonnelDetailScreen({ route, navigation }: Wo
           </View>
         </View>
       </Modal>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

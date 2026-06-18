@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
     // SUBMIT INSPECTION (Manager / Admin)
     // ======================================================
     if (req.method === "POST") {
-      const roleError = requireRole(user, ["admin", "manager"]);
+      const roleError = requireRole(user, ["admin", "manager", "operations_manager", "supervisor", "inspector"]);
       if (roleError) return roleError;
 
       const body = await req.json();
@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
     // LIST INSPECTIONS
     // ======================================================
     if (req.method === "GET" && !url.searchParams.get("id")) {
-      const roleError = requireRole(user, ["admin", "manager"]);
+      const roleError = requireRole(user, ["admin", "manager", "operations_manager", "supervisor", "inspector"]);
       if (roleError) return roleError;
 
       const siteId = url.searchParams.get("site_id");

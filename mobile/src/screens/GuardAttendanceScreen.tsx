@@ -24,6 +24,7 @@ import * as attendanceService from '../api/attendanceService';
 import * as workforceAttendanceService from '../api/workforceAttendanceService';
 import * as siteService from '../api/siteService';
 import { supabase } from '../api/supabase';
+import { registerBackgroundLocationTask } from '../tasks/locationTask';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -319,6 +320,9 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
           setSelfieUri(null);
           setSelfieStorageUrl(null);
 
+          // Register background location task for this guard (Fix #3)
+          registerBackgroundLocationTask();
+
           const lateMsg = result.status === 'late'
             ? `\n⚠️ Marked as LATE / देरी से चिह्नित\n${result.remarks || ''}`
             : '';
@@ -407,7 +411,7 @@ export default function GuardAttendanceScreen({ navigation }: { navigation: any 
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ TopAppBar aligned with mockup ═══ */}
       <View style={[s.topBar, { height: 60 + insets.top, paddingTop: insets.top }]}>

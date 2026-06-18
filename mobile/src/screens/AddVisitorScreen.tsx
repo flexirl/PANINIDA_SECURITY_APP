@@ -6,6 +6,7 @@ import { useScaledStyles } from '../context/FontSizeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import { logVisitor } from '../api/visitorLogService';
+import SuccessModal from '../components/SuccessModal';
 
 export default function AddVisitorScreen({ navigation }: { navigation: any }) {
   const s = useScaledStyles(styles);
@@ -17,6 +18,9 @@ export default function AddVisitorScreen({ navigation }: { navigation: any }) {
   const [purpose, setPurpose] = useState<'Delivery' | 'Guest' | 'Maintenance' | 'Cab'>('Delivery');
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [onSuccessClose, setOnSuccessClose] = useState<() => void>(() => () => {});
   
   const purposes: { id: 'Delivery' | 'Guest' | 'Maintenance' | 'Cab', label: string }[] = [
     { id: 'Delivery', label: 'Delivery' },
@@ -48,9 +52,9 @@ export default function AddVisitorScreen({ navigation }: { navigation: any }) {
         purpose: purpose,
       });
 
-      Alert.alert('Success', 'Visitor logged successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      setSuccessMessage('Visitor logged successfully');
+      setOnSuccessClose(() => () => navigation.goBack());
+      setShowSuccessModal(true);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to log visitor');
     } finally {
@@ -60,7 +64,7 @@ export default function AddVisitorScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
       
       {/* Top Nav */}
       <View style={[s.topBar, { height: 60 + insets.top, paddingTop: insets.top }]}>
@@ -181,6 +185,11 @@ export default function AddVisitorScreen({ navigation }: { navigation: any }) {
       <View style={s.decorativeBlur1} pointerEvents="none" />
       <View style={s.decorativeBlur2} pointerEvents="none" />
       
+      <SuccessModal
+        visible={showSuccessModal}
+        description={successMessage}
+        onClose={() => { setShowSuccessModal(false); onSuccessClose(); }}
+      />
     </View>
   );
 }

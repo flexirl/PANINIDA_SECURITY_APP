@@ -25,6 +25,7 @@ import { supabase } from '../api/supabase';
 import type { Site } from '../types/workforce';
 import ClientTopNav from '../components/ClientTopNav';
 import ClientBottomNav from '../components/ClientBottomNav';
+import LogoutModal from '../components/LogoutModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -46,6 +47,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
   const [openComplaintsCount, setOpenComplaintsCount] = useState(0);
   const [activeVisitorsCount, setActiveVisitorsCount] = useState(0);
   const [isInactive, setIsInactive] = useState(false);
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -103,7 +105,12 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
     fetchData();
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setIsLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLogoutModalVisible(false);
     try {
       await signOut();
       navigation.replace('Login');
@@ -127,6 +134,11 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
         <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
           <Text style={s.logoutBtnText}>Logout</Text>
         </TouchableOpacity>
+        <LogoutModal 
+          visible={isLogoutModalVisible} 
+          onCancel={() => setIsLogoutModalVisible(false)} 
+          onConfirm={confirmLogout} 
+        />
       </View>
     );
   }
@@ -141,7 +153,7 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
       {/* ═══ Header App Bar ═══ */}
       <ClientTopNav />
@@ -339,6 +351,12 @@ export default function ClientPortalHomeScreen({ navigation }: any) {
 
       {/* ═══ Bottom Navigation ═══ */}
       <ClientBottomNav activeTab="home" />
+
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={confirmLogout} 
+      />
     </View>
   );
 }
